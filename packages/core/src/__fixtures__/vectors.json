@@ -1,0 +1,258 @@
+{
+  "algorithm": "murmur3_x86_32",
+  "seed": 0,
+  "totalBuckets": 10000,
+  "hashInput": "${flagKey}:${salt}:${unitId}",
+  "generatedBy": "scripts/generate-vectors.mjs",
+  "crossCheck": {
+    "script": "scripts/crosscheck-vectors.mjs",
+    "tool": "murmurhash3js-revisited@3.0.0",
+    "matched": "27/27",
+    "date": "2026-08-02"
+  },
+  "cases": [
+    {
+      "id": "boundary-bucket-min",
+      "flagKey": "checkout-v2",
+      "salt": "s1",
+      "unitId": "search-3b6e172e",
+      "hash": 2033880000,
+      "bucket": 0,
+      "note": "lowest observed bucket"
+    },
+    {
+      "id": "boundary-bucket-max",
+      "flagKey": "checkout-v2",
+      "salt": "s1",
+      "unitId": "search-7fce7c5e",
+      "hash": 2888579999,
+      "bucket": 9999,
+      "note": "highest observed bucket (9999)"
+    },
+    {
+      "id": "rollout-boundary-0pct",
+      "flagKey": "rollout-flag",
+      "salt": "rs",
+      "unitId": "unit-a",
+      "hash": 1322111525,
+      "bucket": 1525,
+      "note": "rollout 0%"
+    },
+    {
+      "id": "rollout-boundary-100pct",
+      "flagKey": "rollout-flag",
+      "salt": "rs",
+      "unitId": "unit-a",
+      "hash": 1322111525,
+      "bucket": 1525,
+      "note": "rollout 100%"
+    },
+    {
+      "id": "rollout-threshold-minus-one",
+      "flagKey": "rollout-flag",
+      "salt": "rs",
+      "unitId": "search-b59a47cd",
+      "hash": 832644199,
+      "bucket": 4199,
+      "note": "bucket === rolloutThreshold(42.00) - 1 === 4199"
+    },
+    {
+      "id": "rollout-threshold-exact",
+      "flagKey": "rollout-flag",
+      "salt": "rs",
+      "unitId": "search-95ef87d2",
+      "hash": 190374200,
+      "bucket": 4200,
+      "note": "bucket === rolloutThreshold(42.00) === 4200"
+    },
+    {
+      "id": "rollout-0.07-pin",
+      "flagKey": "rollout-flag",
+      "salt": "rs",
+      "unitId": "unit-pin",
+      "hash": 1671974720,
+      "bucket": 4720,
+      "note": "rollout 0.07 -> threshold 7"
+    },
+    {
+      "id": "empty-flagkey",
+      "flagKey": "",
+      "salt": "s1",
+      "unitId": "user-1",
+      "hash": 4192101043,
+      "bucket": 1043,
+      "note": "empty flagKey"
+    },
+    {
+      "id": "empty-salt",
+      "flagKey": "flag-1",
+      "salt": "",
+      "unitId": "user-1",
+      "hash": 1739521606,
+      "bucket": 1606,
+      "note": "empty salt"
+    },
+    {
+      "id": "empty-unitid",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "",
+      "hash": 1982409951,
+      "bucket": 9951,
+      "note": "empty unitId"
+    },
+    {
+      "id": "empty-all",
+      "flagKey": "",
+      "salt": "",
+      "unitId": "",
+      "hash": 1875425301,
+      "bucket": 5301,
+      "note": "all three empty"
+    },
+    {
+      "id": "non-ascii-cafe",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "café",
+      "hash": 838722990,
+      "bucket": 2990,
+      "note": "accented Latin (precomposed é)"
+    },
+    {
+      "id": "non-ascii-nandu",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "ñandú",
+      "hash": 1399352389,
+      "bucket": 2389,
+      "note": "accented Latin, ñ + ú"
+    },
+    {
+      "id": "non-ascii-cjk",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "日本語",
+      "hash": 2269735648,
+      "bucket": 5648,
+      "note": "CJK"
+    },
+    {
+      "id": "non-ascii-emoji-surrogate-pair",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "🚀",
+      "hash": 506792850,
+      "bucket": 2850,
+      "note": "surrogate-pair emoji"
+    },
+    {
+      "id": "non-ascii-emoji-zwj",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "👩‍💻",
+      "hash": 2811503174,
+      "bucket": 3174,
+      "note": "ZWJ sequence (woman + ZWJ + laptop)"
+    },
+    {
+      "id": "non-ascii-precomposed-e",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "é",
+      "hash": 775871999,
+      "bucket": 1999,
+      "note": "precomposed é (U+00E9) — pins the no-normalization rule against the decomposed row"
+    },
+    {
+      "id": "non-ascii-decomposed-e",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "é",
+      "hash": 780184994,
+      "bucket": 4994,
+      "note": "decomposed e + U+0301 — MUST hash/bucket differently than the precomposed row above"
+    },
+    {
+      "id": "signed-hash-0",
+      "flagKey": "signed-flag",
+      "salt": "ss",
+      "unitId": "search-ba673823",
+      "hash": 3320328721,
+      "bucket": 8721,
+      "note": "raw hash has the high bit set (>= 2^31)"
+    },
+    {
+      "id": "signed-hash-1",
+      "flagKey": "signed-flag",
+      "salt": "ss",
+      "unitId": "search-26a2b407",
+      "hash": 3736777028,
+      "bucket": 7028,
+      "note": "raw hash has the high bit set (>= 2^31)"
+    },
+    {
+      "id": "signed-hash-2",
+      "flagKey": "signed-flag",
+      "salt": "ss",
+      "unitId": "search-43f385d1",
+      "hash": 3509484811,
+      "bucket": 4811,
+      "note": "raw hash has the high bit set (>= 2^31)"
+    },
+    {
+      "id": "tail-branch-mod-0",
+      "flagKey": "tail",
+      "salt": "t",
+      "unitId": "x",
+      "hash": 2091748536,
+      "bucket": 8536,
+      "note": "hash input byte length ≡ 0 (mod 4)"
+    },
+    {
+      "id": "tail-branch-mod-1",
+      "flagKey": "tail",
+      "salt": "t",
+      "unitId": "xx",
+      "hash": 491187902,
+      "bucket": 7902,
+      "note": "hash input byte length ≡ 1 (mod 4)"
+    },
+    {
+      "id": "tail-branch-mod-2",
+      "flagKey": "tail",
+      "salt": "t",
+      "unitId": "xxx",
+      "hash": 647965211,
+      "bucket": 5211,
+      "note": "hash input byte length ≡ 2 (mod 4)"
+    },
+    {
+      "id": "tail-branch-mod-3",
+      "flagKey": "tail",
+      "salt": "t",
+      "unitId": "",
+      "hash": 3592475507,
+      "bucket": 5507,
+      "note": "hash input byte length ≡ 3 (mod 4)"
+    },
+    {
+      "id": "separator-ambiguity",
+      "flagKey": "flag:with:colons",
+      "salt": "s1",
+      "unitId": "user-1",
+      "hash": 1118274431,
+      "bucket": 4431,
+      "note": "flagKey containing \":\" — documented limitation, not defended against"
+    },
+    {
+      "id": "long-input-1kib-unitid",
+      "flagKey": "flag-1",
+      "salt": "s1",
+      "unitId": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu",
+      "hash": 1460975843,
+      "bucket": 5843,
+      "note": "1 KiB unitId"
+    }
+  ]
+}
