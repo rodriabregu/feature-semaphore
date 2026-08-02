@@ -1,0 +1,23 @@
+{
+  "primary": {
+    "kind": "smhasher-verification-value",
+    "algorithm": "Murmur3A (x86 32-bit)",
+    "expected": "0xB0F57EE3",
+    "procedure": "256-key self-test over aappleby/smhasher's MurmurHash3.cpp: for key length i in 0..255, key = bytes [0,1,...,i-1], hash = murmur3_32_bytes(key, seed = 256 - i); write each hash little-endian into a 1024-byte buffer at offset i*4; final = murmur3_32_bytes(buffer, seed = 0); expected 0xB0F57EE3."
+  },
+  "secondary": {
+    "kind": "community-per-string-triplets",
+    "seed": 0,
+    "encoding": "utf-8",
+    "sources": [
+      "https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp",
+      "https://github.com/cimi/murmurhash3js-revisited (independently recomputed, MIT, v3.0.0)"
+    ],
+    "cases": [
+      { "input": "", "hash": 0 },
+      { "input": "abc", "hash": 3017643002 },
+      { "input": "café", "hash": 605818632 },
+      { "input": "🚀", "hash": 2137479269 }
+    ]
+  }
+}
