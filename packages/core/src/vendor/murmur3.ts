@@ -48,11 +48,13 @@ export function murmur3_32_bytes(bytes: Uint8Array, seed = 0): number {
 
   for (let i = 0; i < nblocks; i++) {
     const offset = i * 4;
+    // Every index below is provably in bounds (offset + 3 < len whenever i < nblocks),
+    // so a Uint8Array read here can never be `undefined` — no `?? 0` fallback needed.
     let k1 =
-      (bytes[offset] ?? 0) |
-      ((bytes[offset + 1] ?? 0) << 8) |
-      ((bytes[offset + 2] ?? 0) << 16) |
-      ((bytes[offset + 3] ?? 0) << 24);
+      bytes[offset] |
+      (bytes[offset + 1] << 8) |
+      (bytes[offset + 2] << 16) |
+      (bytes[offset + 3] << 24);
 
     k1 = Math.imul(k1, C1);
     k1 = rotl32(k1, 15);
@@ -66,10 +68,12 @@ export function murmur3_32_bytes(bytes: Uint8Array, seed = 0): number {
   const tailOffset = nblocks * 4;
   const remainder = len & 3;
   let k1 = 0;
-  if (remainder === 3) k1 ^= (bytes[tailOffset + 2] ?? 0) << 16;
-  if (remainder >= 2) k1 ^= (bytes[tailOffset + 1] ?? 0) << 8;
+  // Every index read below is provably in bounds for its guarding condition
+  // (e.g. tailOffset + 2 < len whenever remainder === 3), so no `?? 0` fallback needed.
+  if (remainder === 3) k1 ^= bytes[tailOffset + 2] << 16;
+  if (remainder >= 2) k1 ^= bytes[tailOffset + 1] << 8;
   if (remainder >= 1) {
-    k1 ^= bytes[tailOffset] ?? 0;
+    k1 ^= bytes[tailOffset];
     k1 = Math.imul(k1, C1);
     k1 = rotl32(k1, 15);
     k1 = Math.imul(k1, C2);

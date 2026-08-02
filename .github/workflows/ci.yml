@@ -23,5 +23,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
+      # tsc -b covers src AND tests, so @ts-expect-error rows are enforced.
       - run: pnpm typecheck
-      - run: pnpm test
+      # MUST run from the repo root: no --filter, no working-directory override.
+      # The threshold key 'packages/core/src/**' resolves relative to the config
+      # that declares it (the root vitest.config.ts). Running from inside
+      # packages/core loads that package's own project config, which has no
+      # coverage block — a per-project coverage block is silently ignored with
+      # no fallback, producing a green run that enforces nothing (C1).
+      - run: pnpm test:coverage
+      # Must precede the vector steps below: they consume the built dist/ (C10).
+      - run: pnpm build
+      # Regenerates in memory and byte-diffs against the committed fixture.
+      - run: pnpm vectors:verify
+      # Independent authority: murmurhash3js-revisited@3.0.0 (C7).
+      #
+      # build, vectors:verify, and crosscheck:vectors stay THREE SEPARATE steps on
+      # purpose. Merging them destroys the two-authority independence guarantee
+      # that is the entire point of the golden vectors.
+      - run: pnpm crosscheck:vectors

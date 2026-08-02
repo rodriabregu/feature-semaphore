@@ -102,6 +102,18 @@ describe('matches — cross-cutting non-match and safety rules', () => {
     expect(matches(rule, attrs({}))).toBe(false);
   });
 
+  it('an unrecognized operator is a non-match, without throwing', () => {
+    const rule = unsafeRule({
+      attribute: 'plan',
+      serve: true,
+      rollout: 100,
+      operator: 'between',
+      values: ['a', 'z'],
+    });
+    expect(() => matches(rule, attrs({ plan: 'm' }))).not.toThrow();
+    expect(matches(rule, attrs({ plan: 'm' }))).toBe(false);
+  });
+
   it('empty values: not_in matches everything (empty exclusion list excludes nobody)', () => {
     const rule = unsafeRule({
       attribute: 'plan',

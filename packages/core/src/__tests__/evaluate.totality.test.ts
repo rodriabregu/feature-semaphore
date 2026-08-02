@@ -42,6 +42,26 @@ describe('evaluate — totality for malformed FlagDefinition shapes (C2)', () =>
     });
   });
 
+  it('an own-property override whose stored value is explicitly undefined does not yield OVERRIDE', () => {
+    // Object.hasOwn reports the key as present, but the guarded `override !== undefined`
+    // check still falls through to rules/fallthrough instead of serving `undefined`.
+    const definition = malformedDef({
+      key: 'fall-scope',
+      salt: 'salt-f',
+      enabled: true,
+      offValue: false,
+      onValue: true,
+      rollout: 0,
+      overrides: { 'user-f': undefined },
+    });
+    const context = ctx({ unitId: 'user-f' });
+    expect(() => evaluate(definition, context)).not.toThrow();
+    expect(evaluate(definition, context)).toEqual({
+      value: false,
+      reason: 'FALLTHROUGH_ROLLOUT',
+    });
+  });
+
   it('rules: undefined degrades to no rules, not a throw', () => {
     const definition = malformedDef({ enabled: true, rules: undefined });
     expect(() => evaluate(definition, ctx())).not.toThrow();
