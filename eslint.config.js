@@ -35,6 +35,9 @@ export default defineConfig(
           message: 'Nondeterminism is banned: fixtures and property tests must be reproducible.',
         },
       ],
+      // EvaluationReason (types.ts) is built from template literal types like
+      // `RULE_MATCH:${number}` by design — numeric interpolation is load-bearing here.
+      '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
     },
   },
   {
