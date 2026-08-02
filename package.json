@@ -1,0 +1,33 @@
+{
+  "name": "feature-semaphore",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -b",
+    "build": "tsc -b packages/core/tsconfig.build.json",
+    "vectors:generate": "node scripts/generate-vectors.mjs",
+    "vectors:verify": "node scripts/generate-vectors.mjs --check",
+    "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.1",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
+    "murmurhash3js-revisited": "3.0.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
+  }
+}

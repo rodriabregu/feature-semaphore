@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    /*
+     * `lib` is deliberately UNSET.
+     *
+     * With `target: "ES2022"` and no explicit `lib`, TypeScript resolves the
+     * default `lib.es2022.full.d.ts`, which is what supplies the `TextEncoder`
+     * ambient declaration the vendored murmur3 hash (packages/core/src/vendor/murmur3.ts)
+     * depends on. Pinning `lib: ["ES2022"]` here narrows the set to the
+     * language-only libs, drops the DOM/WebWorker ambient set, and breaks
+     * `new TextEncoder()` with `TS2304: Cannot find name 'TextEncoder'`.
+     *
+     * Do not "tighten" this by adding an explicit `lib` array.
+     */
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmitOnError": true
+  }
+}
