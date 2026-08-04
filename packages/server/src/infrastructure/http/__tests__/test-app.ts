@@ -1,0 +1,69 @@
+import { createHash, randomUUID } from 'node:crypto';
+import Fastify, { type FastifyInstance } from 'fastify';
+import type { Clock } from '../../../application/ports/clock.js';
+import { createMemoryApiKeyRepository } from '../../persistence/memory/api-key-repository.memory.js';
+import { createMemoryAuditLog } from '../../persistence/memory/audit-log.memory.js';
+import { createMemoryFlagRepository } from '../../persistence/memory/flag-repository.memory.js';
+import { MemoryDatabase } from '../../persistence/memory/store.js';
+import { createMemoryUnitOfWork } from '../../persistence/memory/unit-of-work.memory.js';
+import { registerErrorHandler } from '../error-handler.js';
+import { authPlugin } from '../plugins/auth.js';
+import { registerConfigRoutes } from '../routes/config.routes.js';
+import { registerFlagsRoutes } from '../routes/flags.routes.js';
+import { registerOverridesRoutes } from '../routes/overrides.routes.js';
+import { registerRulesRoutes } from '../routes/rules.routes.js';
+
+export const ADMIN_KEY = `fs_admin_${'a'.repeat(43)}`;
+export const SERVER_KEY = `fs_server_${'b'.repeat(43)}`;
+
+export function hashKey(raw: string): string {
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
+}
+
+export interface TestApp {
+  readonly app: FastifyInstance;
+  readonly db: MemoryDatabase;
+  readonly clock: Clock;
+}
+
+/** A full app wired against the in-memory adapter — no network, no Docker. */
+export async function buildTestApp(): Promise<TestApp> {
+  const db = new MemoryDatabase();
+  const store = { get: () => db.current };
+  const clock: Clock = { now: () => new Date('2026-01-01T00:00:00Z') };
+
+  const repo = createMemoryFlagRepository(store, clock);
+  const keys = createMemoryApiKeyRepository(store);
+  const audit = createMemoryAuditLog(store);
+  const uow = createMemoryUnitOfWork(db, clock);
+
+  await keys.ensureAdminKey(hashKey(ADMIN_KEY), clock.now());
+  db.current.apiKeys.push({
+    id: randomUUID(),
+    kind: 'server',
+    environment: 'development',
+    keyHash: hashKey(SERVER_KEY),
+    createdAt: clock.now(),
+    lastUsedAt: null,
+  });
+
+  const app = Fastify();
+  registerErrorHandler(app);
+  await app.register(
+    (instance, _opts, done) => {
+      authPlugin(instance, { keys, clock });
+      registerFlagsRoutes(instance, { uow, repo, audit, clock });
+      registerConfigRoutes(instance, { uow, clock });
+      registerRulesRoutes(instance, { uow, clock });
+      registerOverridesRoutes(instance, { uow, clock });
+      done();
+    },
+    { prefix: '/api/v1' },
+  );
+
+  return { app, db, clock };
+}
+
+export function adminAuthHeader(): Record<string, string> {
+  return { authorization: `Bearer ${ADMIN_KEY}` };
+}
