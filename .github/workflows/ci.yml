@@ -8,6 +8,18 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: semaphore
+          POSTGRES_PASSWORD: semaphore
+          POSTGRES_DB: semaphore_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U semaphore -d semaphore_test"
+          --health-interval 5s --health-timeout 5s
+          --health-retries 10 --health-start-period 10s
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +44,8 @@ jobs:
       # coverage block — a per-project coverage block is silently ignored with
       # no fallback, producing a green run that enforces nothing (C1).
       - run: pnpm test:coverage
+        env:
+          DATABASE_URL: postgres://semaphore:semaphore@localhost:5432/semaphore_test
       # Must precede the vector steps below: they consume the built dist/ (C10).
       - run: pnpm build
       # Regenerates in memory and byte-diffs against the committed fixture.

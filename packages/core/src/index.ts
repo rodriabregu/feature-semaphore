@@ -4,6 +4,7 @@ export { matches } from './targeting.js';
 export type {
   AttributeValue,
   EvalContext,
+  Environment,
   Evaluation,
   EvaluationReason,
   FlagDefinition,

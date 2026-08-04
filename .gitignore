@@ -3,4 +3,5 @@ dist/
 .tsbuild/
 coverage/
 *.tsbuildinfo
+*.sqlite
 .DS_Store
