@@ -73,11 +73,54 @@ describe('flags routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers.etag).toBeUndefined();
     const body: {
-      flags: { key: string; environments: { development: unknown; production: unknown } }[];
+      flags: {
+        key: string;
+        environments: {
+          development: { version: unknown };
+          production: { version: unknown };
+        };
+      }[];
     } = response.json();
     const flag = body.flags.find((f) => f.key === 'flag-4');
     expect(flag?.environments.development).toBeDefined();
     expect(flag?.environments.production).toBeDefined();
+    expect(flag?.environments.development.version).toBeDefined();
+    expect(flag?.environments.production.version).toBeDefined();
+  });
+
+  it('GET /flags carries an independent version per environment block, not a shared/duplicated one', async () => {
+    await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/flags',
+      headers: { ...adminAuthHeader(), 'content-type': 'application/json' },
+      payload: { key: 'flag-7', name: 'Flag 7', description: '' },
+    });
+    await testApp.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/flags/flag-7/config/production',
+      headers: { ...adminAuthHeader(), 'content-type': 'application/json', 'if-match': '1' },
+      payload: { enabled: true },
+    });
+
+    const response = await testApp.app.inject({
+      method: 'GET',
+      url: '/api/v1/flags',
+      headers: adminAuthHeader(),
+    });
+
+    const body: {
+      flags: {
+        key: string;
+        environments: {
+          development: { version: number };
+          production: { version: number };
+        };
+      }[];
+    } = response.json();
+    const flag = body.flags.find((f) => f.key === 'flag-7');
+    expect(flag?.environments.development.version).toBe(1);
+    expect(flag?.environments.production.version).toBe(2);
+    expect(flag?.environments.development.version).not.toBe(flag?.environments.production.version);
   });
 
   it('GET /flags/:key returns an archived flag marked archived: true, not filtered', async () => {

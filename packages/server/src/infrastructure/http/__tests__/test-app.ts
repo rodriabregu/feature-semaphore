@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Clock } from '../../../application/ports/clock.js';
+import type { UnitOfWork } from '../../../application/ports/unit-of-work.js';
 import { createMemoryApiKeyRepository } from '../../persistence/memory/api-key-repository.memory.js';
 import { createMemoryAuditLog } from '../../persistence/memory/audit-log.memory.js';
 import { createMemoryFlagRepository } from '../../persistence/memory/flag-repository.memory.js';
@@ -26,8 +27,17 @@ export interface TestApp {
   readonly clock: Clock;
 }
 
+export interface BuildTestAppOptions {
+  /**
+   * Override the wired `UnitOfWork` — e.g. to simulate a failing audit write
+   * for a specific mutation while everything else behaves normally. Receives
+   * the same `db`/`clock` the rest of the app is built against.
+   */
+  readonly uowFactory?: (db: MemoryDatabase, clock: Clock) => UnitOfWork;
+}
+
 /** A full app wired against the in-memory adapter — no network, no Docker. */
-export async function buildTestApp(): Promise<TestApp> {
+export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<TestApp> {
   const db = new MemoryDatabase();
   const store = { get: () => db.current };
   const clock: Clock = { now: () => new Date('2026-01-01T00:00:00Z') };
@@ -35,7 +45,9 @@ export async function buildTestApp(): Promise<TestApp> {
   const repo = createMemoryFlagRepository(store, clock);
   const keys = createMemoryApiKeyRepository(store);
   const audit = createMemoryAuditLog(store);
-  const uow = createMemoryUnitOfWork(db, clock);
+  const uow = options.uowFactory
+    ? options.uowFactory(db, clock)
+    : createMemoryUnitOfWork(db, clock);
 
   await keys.ensureAdminKey(hashKey(ADMIN_KEY), clock.now());
   db.current.apiKeys.push({

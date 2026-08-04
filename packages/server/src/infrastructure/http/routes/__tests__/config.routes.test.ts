@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { Clock } from '../../../../application/ports/clock.js';
+import type { AuditEntry } from '../../../../application/ports/audit-log.js';
+import { createMemoryAuditLog } from '../../../persistence/memory/audit-log.memory.js';
+import { createMemoryFlagRepository } from '../../../persistence/memory/flag-repository.memory.js';
 import { adminAuthHeader, buildTestApp, type TestApp } from '../../__tests__/test-app.js';
 
 async function createFlag(app: TestApp['app']): Promise<void> {
@@ -83,5 +87,54 @@ describe('PATCH /flags/:key/config/:env', () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe('PATCH /flags/:key/config/:env — audit write failure', () => {
+  it('surfaces as 500 problem+json to the caller and does not persist the mutation', async () => {
+    const testApp = await buildTestApp({
+      // A stub AuditLog that throws only for the mutation under test, so flag
+      // creation (a separate audit action) still succeeds normally.
+      uowFactory: (db, clock: Clock) => ({
+        async transact(work) {
+          const draft = structuredClone(db.current);
+          const realAudit = createMemoryAuditLog({ get: () => draft });
+          const result = await work({
+            flags: createMemoryFlagRepository({ get: () => draft }, clock),
+            audit: {
+              record: (entry: AuditEntry) =>
+                entry.action === 'config.updated'
+                  ? Promise.reject(new Error('simulated audit write failure'))
+                  : realAudit.record(entry),
+              findByFlagKey: (flagKey: string, limit: number) =>
+                realAudit.findByFlagKey(flagKey, limit),
+            },
+          });
+          db.current = draft;
+          return result;
+        },
+      }),
+    });
+    await createFlag(testApp.app);
+
+    const response = await testApp.app.inject({
+      method: 'PATCH',
+      url: '/api/v1/flags/flag-1/config/development',
+      headers: { ...adminAuthHeader(), 'content-type': 'application/json', 'if-match': '1' },
+      payload: { enabled: true },
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.headers['content-type']).toContain('application/problem+json');
+
+    const persisted = await testApp.app.inject({
+      method: 'GET',
+      url: '/api/v1/flags/flag-1',
+      headers: adminAuthHeader(),
+    });
+    const body: { environments: { development: { enabled: boolean; version: number } } } =
+      persisted.json();
+    expect(body.environments.development.enabled).toBe(false);
+    expect(body.environments.development.version).toBe(1);
   });
 });

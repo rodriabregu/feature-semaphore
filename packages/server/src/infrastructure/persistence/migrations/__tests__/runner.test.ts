@@ -68,6 +68,34 @@ describe('migration runner (SQLite)', () => {
         .run(),
     ).toThrow(/CHECK constraint failed/);
   });
+
+  it('updating an existing admin row to carry a non-null environment fails the CHECK constraint', async () => {
+    const conn = createSqliteMigrationConnection(db);
+    await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
+
+    db.prepare(
+      `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
+       VALUES ('id-3', 'admin', NULL, 'hash3', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    expect(() =>
+      db.prepare(`UPDATE api_keys SET environment = 'development' WHERE id = 'id-3'`).run(),
+    ).toThrow(/CHECK constraint failed/);
+  });
+
+  it('updating an existing server row to a null environment fails the CHECK constraint', async () => {
+    const conn = createSqliteMigrationConnection(db);
+    await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
+
+    db.prepare(
+      `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
+       VALUES ('id-4', 'server', 'development', 'hash4', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    expect(() =>
+      db.prepare(`UPDATE api_keys SET environment = NULL WHERE id = 'id-4'`).run(),
+    ).toThrow(/CHECK constraint failed/);
+  });
 });
 
 describe.skipIf(!process.env.DATABASE_URL)('migration runner (Postgres CHECK, row 8)', () => {
@@ -91,6 +119,26 @@ describe.skipIf(!process.env.DATABASE_URL)('migration runner (Postgres CHECK, ro
         client.query(
           `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
            VALUES ('11111111-1111-1111-1111-111111111111', 'admin', 'development', 'hash', now())`,
+        ),
+      ).rejects.toThrow();
+
+      await client.query(
+        `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
+         VALUES ('22222222-2222-2222-2222-222222222222', 'admin', NULL, 'hash2', now())`,
+      );
+      await expect(
+        client.query(
+          `UPDATE api_keys SET environment = 'development' WHERE id = '22222222-2222-2222-2222-222222222222'`,
+        ),
+      ).rejects.toThrow();
+
+      await client.query(
+        `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
+         VALUES ('33333333-3333-3333-3333-333333333333', 'server', 'development', 'hash3', now())`,
+      );
+      await expect(
+        client.query(
+          `UPDATE api_keys SET environment = NULL WHERE id = '33333333-3333-3333-3333-333333333333'`,
         ),
       ).rejects.toThrow();
     } finally {
