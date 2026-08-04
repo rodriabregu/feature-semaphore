@@ -13,7 +13,7 @@
  * path only on ASCII, silently diverging on every non-ASCII vector.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import murmurhash3js from 'murmurhash3js-revisited';
 
@@ -55,10 +55,6 @@ function main() {
 
   const total = cases.length;
   console.log(`crosscheck:vectors — matched ${String(matched)}/${String(total)}`);
-
-  document.crossCheck.matched = `${String(matched)}/${String(total)}`;
-  document.crossCheck.date = new Date().toISOString().slice(0, 10);
-  writeFileSync(VECTORS_PATH, `${JSON.stringify(document, null, 2)}\n`);
 }
 
 main();

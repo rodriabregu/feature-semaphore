@@ -6,9 +6,7 @@
   "generatedBy": "scripts/generate-vectors.mjs",
   "crossCheck": {
     "script": "scripts/crosscheck-vectors.mjs",
-    "tool": "murmurhash3js-revisited@3.0.0",
-    "matched": "27/27",
-    "date": "2026-08-02"
+    "tool": "murmurhash3js-revisited@3.0.0"
   },
   "cases": [
     {

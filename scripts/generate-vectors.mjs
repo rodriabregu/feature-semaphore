@@ -221,11 +221,13 @@ function buildDocument() {
     totalBuckets: TOTAL_BUCKETS,
     hashInput: '${flagKey}:${salt}:${unitId}',
     generatedBy: 'scripts/generate-vectors.mjs',
+    // Static provenance only. Run outcomes (how many cases matched, and when the
+    // check last ran) deliberately do NOT live here: a golden file whose bytes
+    // change with the calendar is not a golden file, and CI is the real record of
+    // when the cross-check last passed.
     crossCheck: {
       script: 'scripts/crosscheck-vectors.mjs',
       tool: 'murmurhash3js-revisited@3.0.0',
-      matched: 'pending',
-      date: 'pending',
     },
     cases: buildCases(),
   };
@@ -251,16 +253,11 @@ function main() {
       return;
     }
 
-    // The crossCheck.matched/date fields are refreshed by crosscheck-vectors.mjs and
-    // are expected to differ from a freshly generated document; compare everything else.
-    const normalize = (text) => {
-      const parsed = JSON.parse(text);
-      parsed.crossCheck.matched = 'pending';
-      parsed.crossCheck.date = 'pending';
-      return serialize(parsed);
-    };
-
-    if (normalize(existing) !== normalize(generated)) {
+    // Byte-for-byte, with no normalization. This generator is the only writer of
+    // the fixture — crosscheck-vectors.mjs is strictly read-only — so there is no
+    // field that legitimately drifts and therefore nothing to exempt. Any carve-out
+    // here would narrow the guarantee this check exists to make.
+    if (existing !== generated) {
       console.error(
         'vectors:verify — regenerated vectors differ from the committed fixture. ' +
           'Run pnpm vectors:generate and commit the result.',
