@@ -9,6 +9,7 @@ import { MemoryDatabase } from '../../persistence/memory/store.js';
 import { createMemoryUnitOfWork } from '../../persistence/memory/unit-of-work.memory.js';
 import { registerErrorHandler } from '../error-handler.js';
 import { authPlugin } from '../plugins/auth.js';
+import { sdkAuthPlugin } from '../plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../routes/config.routes.js';
 import { registerFlagsRoutes } from '../routes/flags.routes.js';
 import { registerOverridesRoutes } from '../routes/overrides.routes.js';
@@ -73,9 +74,27 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
     { prefix: '/api/v1' },
   );
 
+  // SIBLING scope, never nested inside `/api/v1` — see `main/composition-root.ts`.
+  // The placeholder `/definitions` route proves the auth boundary until WU3
+  // replaces it with the real `registerSdkRoutes` handler.
+  await app.register(
+    (instance, _opts, done) => {
+      sdkAuthPlugin(instance, { keys, clock });
+      instance.get('/definitions', (_request, reply) => {
+        reply.send({ ok: true });
+      });
+      done();
+    },
+    { prefix: '/api/v1/sdk' },
+  );
+
   return { app, db, clock };
 }
 
 export function adminAuthHeader(): Record<string, string> {
   return { authorization: `Bearer ${ADMIN_KEY}` };
+}
+
+export function serverAuthHeader(): Record<string, string> {
+  return { authorization: `Bearer ${SERVER_KEY}` };
 }

@@ -39,5 +39,14 @@ export function createPostgresApiKeyRepository(db: Queryable): ApiKeyRepository 
         [randomUUID(), sha256Hex, at],
       );
     },
+
+    async ensureServerKey(sha256Hex: string, environment: Environment, at: Date): Promise<void> {
+      await db.query(
+        `INSERT INTO api_keys (id, kind, environment, key_hash, created_at)
+         VALUES ($1, 'server', $2, $3, $4)
+         ON CONFLICT (key_hash) DO NOTHING`,
+        [randomUUID(), environment, sha256Hex, at],
+      );
+    },
   };
 }

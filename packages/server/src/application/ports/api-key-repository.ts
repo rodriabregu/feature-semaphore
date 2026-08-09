@@ -18,4 +18,10 @@ export interface ApiKeyRepository {
   touch(id: string, at: Date, staleBefore: Date): Promise<void>;
   /** Idempotent upsert of the env-var admin key at startup. */
   ensureAdminKey(sha256Hex: string, at: Date): Promise<void>;
+
+  /**
+   * Idempotent upsert of an env-var server key, bound to exactly one
+   * environment. Idempotent by `key_hash`, mirroring `ensureAdminKey`.
+   */
+  ensureServerKey(sha256Hex: string, environment: Environment, at: Date): Promise<void>;
 }

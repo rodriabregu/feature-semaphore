@@ -7,6 +7,7 @@ import type { UnitOfWork } from '../application/ports/unit-of-work.js';
 import { createSystemClock } from '../infrastructure/clock/system-clock.js';
 import { registerErrorHandler } from '../infrastructure/http/error-handler.js';
 import { authPlugin } from '../infrastructure/http/plugins/auth.js';
+import { sdkAuthPlugin } from '../infrastructure/http/plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../infrastructure/http/routes/config.routes.js';
 import { registerFlagsRoutes } from '../infrastructure/http/routes/flags.routes.js';
 import { registerOverridesRoutes } from '../infrastructure/http/routes/overrides.routes.js';
@@ -187,6 +188,22 @@ export async function buildApp(
       done();
     },
     { prefix: '/api/v1' },
+  );
+
+  // A SIBLING Fastify scope, never nested inside `/api/v1` — Fastify hooks are
+  // encapsulated per `register` scope, so the management `onRequest` hook
+  // (admin-only) never runs against an SDK request, and vice versa. The
+  // definitions/events handlers land here in WU3/WU4; the placeholder route
+  // below exists only to prove the auth boundary until then.
+  await app.register(
+    (instance, _opts, done) => {
+      sdkAuthPlugin(instance, { keys: adapters.keys, clock });
+      instance.get('/definitions', (_request, reply: FastifyReply) => {
+        reply.send({ ok: true });
+      });
+      done();
+    },
+    { prefix: '/api/v1/sdk' },
   );
 
   const start = async (): Promise<void> => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Environment } from '@rodriab/feature-semaphore-core';
 import type {
   ApiKeyRecord,
   ApiKeyRepository,
@@ -31,6 +32,22 @@ export function createMemoryApiKeyRepository(store: StoreAccessor): ApiKeyReposi
         id: randomUUID(),
         kind: 'admin',
         environment: null,
+        keyHash: sha256Hex,
+        createdAt: at,
+        lastUsedAt: null,
+      });
+      return Promise.resolve();
+    },
+
+    async ensureServerKey(sha256Hex: string, environment: Environment, at: Date): Promise<void> {
+      const s = store.get();
+      if (s.apiKeys.some((k) => k.keyHash === sha256Hex)) {
+        return Promise.resolve();
+      }
+      s.apiKeys.push({
+        id: randomUUID(),
+        kind: 'server',
+        environment,
         keyHash: sha256Hex,
         createdAt: at,
         lastUsedAt: null,

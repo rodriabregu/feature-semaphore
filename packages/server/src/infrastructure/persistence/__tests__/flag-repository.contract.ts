@@ -348,5 +348,9 @@ export function describeFlagRepositoryContract(harness: AdapterHarness): void {
         ctx.insertRawApiKey({ kind: 'admin', environment: 'development' }),
       ).rejects.toThrow();
     });
+
+    // Cases 19-22 (ensureServerKey idempotency, the null-environment server-row
+    // CHECK, and the exposures upsert-increment semantics) land together in
+    // WU4, alongside the ExposureRepository port that cases 21-22 depend on.
   });
 }

@@ -43,5 +43,13 @@ export function createSqliteApiKeyRepository(db: Database.Database): ApiKeyRepos
       ).run(randomUUID(), sha256Hex, at.toISOString());
       return Promise.resolve();
     },
+
+    async ensureServerKey(sha256Hex: string, environment: Environment, at: Date): Promise<void> {
+      db.prepare(
+        `INSERT OR IGNORE INTO api_keys (id, kind, environment, key_hash, created_at)
+         VALUES (?, 'server', ?, ?, ?)`,
+      ).run(randomUUID(), environment, sha256Hex, at.toISOString());
+      return Promise.resolve();
+    },
   };
 }
