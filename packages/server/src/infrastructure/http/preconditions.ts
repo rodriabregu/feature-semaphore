@@ -46,3 +46,20 @@ export function parseIfMatch(value: string | number | undefined): number {
   }
   return Number(stripped);
 }
+
+/**
+ * `If-None-Match` is a cache OPTIMISATION, not a precondition: an unparseable
+ * value degrading to a full 200 is always correct, merely less efficient. A
+ * 400 here would break the SDK's polling loop over a header the server can
+ * safely ignore — the opposite error policy from `parseIfMatch`. NEVER
+ * throws. Splits on commas, strips `W/` and quotes; `*` is returned verbatim
+ * as one of the entity-tags, matching everything.
+ */
+export function parseIfNoneMatch(header: string | undefined): readonly string[] {
+  if (!header) return [];
+  return header
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => (part === '*' ? part : part.replace(/^W\//, '').replace(/^"(.*)"$/, '$1')));
+}
