@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { Environment, FlagDefinition } from '@rodriab/feature-semaphore-core';
 
 /**
@@ -11,3 +12,24 @@ export interface SdkDefinitionsResponse {
   readonly environment: Environment;
   readonly definitions: readonly FlagDefinition[];
 }
+
+/**
+ * `.strict()` at both levels: no `environment` field (it comes only from the
+ * key — a smuggled one is a 400, never silently accepted) and no timestamp
+ * field (client time is untrusted; `bucket_hour` is server-derived). `reason`
+ * is bounded in length but not enumerated — see the port's own comment.
+ */
+export const exposureEntryBody = z
+  .object({
+    flagKey: z.string().min(1).max(64),
+    value: z.boolean(),
+    reason: z.string().min(1).max(64),
+    count: z.number().int().min(1).max(1_000_000),
+  })
+  .strict();
+
+export const eventsBody = z
+  .object({
+    exposures: z.array(exposureEntryBody).min(1).max(500),
+  })
+  .strict();

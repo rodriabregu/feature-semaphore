@@ -4,6 +4,7 @@ import { SQLITE_MIGRATIONS } from '../migrations/index.js';
 import { migrate } from '../migrations/runner.js';
 import { createSqliteApiKeyRepository } from '../sqlite/api-key-repository.sqlite.js';
 import { createSqliteAuditLog } from '../sqlite/audit-log.sqlite.js';
+import { createSqliteExposureRepository } from '../sqlite/exposure-repository.sqlite.js';
 import { createSqliteMigrationConnection } from '../sqlite/connection.js';
 import { createSqliteFlagRepository } from '../sqlite/flag-repository.sqlite.js';
 import { createSqliteUnitOfWork } from '../sqlite/unit-of-work.sqlite.js';
@@ -24,6 +25,11 @@ const sqliteHarness: AdapterHarness = {
       keys: createSqliteApiKeyRepository(db),
       audit: createSqliteAuditLog(db),
       uow: createSqliteUnitOfWork(db, clock),
+      exposures: createSqliteExposureRepository(db),
+      countExposureRows(): Promise<number> {
+        const row = db.prepare('SELECT COUNT(*) AS n FROM exposures').get() as { n: number };
+        return Promise.resolve(row.n);
+      },
       clock,
       insertRawApiKey(row: {
         kind: 'admin' | 'server';

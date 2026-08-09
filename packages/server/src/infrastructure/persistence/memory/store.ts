@@ -1,4 +1,4 @@
-import type { Environment } from '@rodriab/feature-semaphore-core';
+import type { Environment, FlagValue } from '@rodriab/feature-semaphore-core';
 import type { AuditAction } from '../../../application/ports/audit-log.js';
 
 export interface MemoryFlagRow {
@@ -60,6 +60,20 @@ export interface MemoryAuditRow {
   readonly createdAt: Date;
 }
 
+/**
+ * `bucketHour` is stored as its ISO string, matching the SQLite dialect's
+ * `TEXT` representation, so the same five-field equality check works
+ * identically across all three adapters.
+ */
+export interface MemoryExposureRow {
+  readonly flagKey: string;
+  readonly environment: Environment;
+  readonly bucketHourIso: string;
+  readonly value: FlagValue;
+  readonly reason: string;
+  count: number;
+}
+
 export interface MemoryStore {
   flags: MemoryFlagRow[];
   configs: MemoryConfigRow[];
@@ -67,10 +81,19 @@ export interface MemoryStore {
   overrides: MemoryOverrideRow[];
   apiKeys: MemoryApiKeyRow[];
   auditLog: MemoryAuditRow[];
+  exposures: MemoryExposureRow[];
 }
 
 export function createEmptyStore(): MemoryStore {
-  return { flags: [], configs: [], rules: [], overrides: [], apiKeys: [], auditLog: [] };
+  return {
+    flags: [],
+    configs: [],
+    rules: [],
+    overrides: [],
+    apiKeys: [],
+    auditLog: [],
+    exposures: [],
+  };
 }
 
 /** A mutable cell holding the currently-committed store, swapped atomically by the UnitOfWork. */

@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Clock } from '../../../application/ports/clock.js';
+import type { ExposureRepository } from '../../../application/ports/exposure-repository.js';
 import type { UnitOfWork } from '../../../application/ports/unit-of-work.js';
 import { createMemoryApiKeyRepository } from '../../persistence/memory/api-key-repository.memory.js';
 import { createMemoryAuditLog } from '../../persistence/memory/audit-log.memory.js';
+import { createMemoryExposureRepository } from '../../persistence/memory/exposure-repository.memory.js';
 import { createMemoryFlagRepository } from '../../persistence/memory/flag-repository.memory.js';
 import { MemoryDatabase } from '../../persistence/memory/store.js';
 import { createMemoryUnitOfWork } from '../../persistence/memory/unit-of-work.memory.js';
@@ -37,6 +39,23 @@ export interface BuildTestAppOptions {
    * the same `db`/`clock` the rest of the app is built against.
    */
   readonly uowFactory?: (db: MemoryDatabase, clock: Clock) => UnitOfWork;
+
+  /**
+   * Override the wired `ExposureRepository` — e.g. to simulate a persistence
+   * failure on `POST /api/v1/sdk/events` while everything else behaves
+   * normally.
+   */
+  readonly exposuresFactory?: (store: {
+    get: () => MemoryDatabase['current'];
+  }) => ExposureRepository;
+
+  /**
+   * A writable sink for the app's logger — e.g. to assert a persistence
+   * failure was logged, not silently swallowed. Defaults to a fully
+   * disabled logger (matches the composition root's own `logger: false`).
+   * Typed to pino's minimal destination shape, not the full `NodeJS.WritableStream`.
+   */
+  readonly logStream?: { write(chunk: string): boolean };
 }
 
 /** A full app wired against the in-memory adapter — no network, no Docker. */
@@ -48,6 +67,9 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
   const repo = createMemoryFlagRepository(store, clock);
   const keys = createMemoryApiKeyRepository(store);
   const audit = createMemoryAuditLog(store);
+  const exposures = options.exposuresFactory
+    ? options.exposuresFactory(store)
+    : createMemoryExposureRepository(store);
   const uow = options.uowFactory
     ? options.uowFactory(db, clock)
     : createMemoryUnitOfWork(db, clock);
@@ -70,7 +92,9 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
     lastUsedAt: null,
   });
 
-  const app = Fastify();
+  const app = options.logStream
+    ? Fastify({ logger: { level: 'error', stream: options.logStream } })
+    : Fastify();
   registerErrorHandler(app);
   await app.register(
     (instance, _opts, done) => {
@@ -88,7 +112,7 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys, clock });
-      registerSdkRoutes(instance, { repo });
+      registerSdkRoutes(instance, { repo, exposures, clock });
       done();
     },
     { prefix: '/api/v1/sdk' },

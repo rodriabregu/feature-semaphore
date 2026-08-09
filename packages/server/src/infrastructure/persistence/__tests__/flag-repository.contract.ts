@@ -10,6 +10,7 @@ import { toFlagDefinition } from '../../../application/mappers/flag-definition.m
 import type { ApiKeyRepository } from '../../../application/ports/api-key-repository.js';
 import type { AuditLog } from '../../../application/ports/audit-log.js';
 import type { Clock } from '../../../application/ports/clock.js';
+import type { ExposureRepository } from '../../../application/ports/exposure-repository.js';
 import type {
   FlagRepository,
   NewFlag,
@@ -24,6 +25,7 @@ export interface AdapterHarness {
     keys: ApiKeyRepository;
     audit: AuditLog;
     uow: UnitOfWork;
+    exposures: ExposureRepository;
     clock: Clock;
     /**
      * Test-only: inserts a raw `api_keys` row bypassing `ApiKeyRepository`'s
@@ -36,6 +38,8 @@ export interface AdapterHarness {
       kind: 'admin' | 'server';
       environment: Environment | null;
     }): Promise<void>;
+    /** Test-only: reads back raw `exposures` rows for case 21/22 assertions. */
+    countExposureRows(): Promise<number>;
     teardown(): Promise<void>;
   }>;
 }
@@ -349,8 +353,48 @@ export function describeFlagRepositoryContract(harness: AdapterHarness): void {
       ).rejects.toThrow();
     });
 
-    // Cases 19-22 (ensureServerKey idempotency, the null-environment server-row
-    // CHECK, and the exposures upsert-increment semantics) land together in
-    // WU4, alongside the ExposureRepository port that cases 21-22 depend on.
+    it('case 19: ensureServerKey twice inserts one row, environment non-null', async () => {
+      await ctx.keys.ensureServerKey('hash-server-1', 'development', ctx.clock.now());
+      await ctx.keys.ensureServerKey('hash-server-1', 'development', ctx.clock.now());
+
+      const record = defined(await ctx.keys.findByHash('hash-server-1'));
+      expect(record.kind).toBe('server');
+      expect(record.environment).toBe('development');
+    });
+
+    it('case 20: a server row with a NULL environment is rejected', async () => {
+      await expect(ctx.insertRawApiKey({ kind: 'server', environment: null })).rejects.toThrow();
+    });
+
+    it('case 21: two recordBatch calls with the same tuple -> one row, summed count', async () => {
+      const row = {
+        flagKey: 'checkout-v2',
+        environment: 'development' as const,
+        bucketHour: new Date('2026-01-01T14:00:00.000Z'),
+        value: true,
+        reason: 'FALLTHROUGH_ROLLOUT',
+        count: 1,
+      };
+
+      await ctx.exposures.recordBatch([row]);
+      await ctx.exposures.recordBatch([{ ...row, count: 2 }]);
+
+      expect(await ctx.countExposureRows()).toBe(1);
+    });
+
+    it('case 22: two rows differing only in reason -> two rows', async () => {
+      const base = {
+        flagKey: 'checkout-v3',
+        environment: 'development' as const,
+        bucketHour: new Date('2026-01-01T15:00:00.000Z'),
+        value: true,
+        count: 1,
+      };
+
+      await ctx.exposures.recordBatch([{ ...base, reason: 'FLAG_OFF' }]);
+      await ctx.exposures.recordBatch([{ ...base, reason: 'OVERRIDE' }]);
+
+      expect(await ctx.countExposureRows()).toBe(2);
+    });
   });
 }

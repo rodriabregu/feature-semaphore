@@ -1,13 +1,18 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { listDefinitions } from '../../../application/use-cases/list-definitions.js';
+import { recordExposures } from '../../../application/use-cases/record-exposures.js';
+import type { Clock } from '../../../application/ports/clock.js';
+import type { ExposureRepository } from '../../../application/ports/exposure-repository.js';
 import type { FlagRepository } from '../../../application/ports/flag-repository.js';
 import { canonicalString, definitionsEtag, sortDefinitions } from '../etag/definitions-etag.js';
 import { parseIfNoneMatch } from '../preconditions.js';
 import type { SdkAuthContext } from '../plugins/sdk-auth.js';
-import type { SdkDefinitionsResponse } from '../schemas/sdk.js';
+import { eventsBody, type SdkDefinitionsResponse } from '../schemas/sdk.js';
 
 export interface SdkRoutesDeps {
   readonly repo: FlagRepository;
+  readonly exposures: ExposureRepository;
+  readonly clock: Clock;
 }
 
 /**
@@ -44,5 +49,27 @@ export function registerSdkRoutes(app: FastifyInstance, deps: SdkRoutesDeps): vo
 
     const body: SdkDefinitionsResponse = { environment, definitions: sorted };
     reply.send(body);
+  });
+
+  /**
+   * Fire-and-forget from the caller's perspective: ALWAYS 202, even when
+   * persistence rejects. Validation failure (`.strict()`, bounds) is a 400 —
+   * it means the SDK's own serialiser is broken, the one signal it can act
+   * on. A persistence failure is the server's problem; turning it into a 5xx
+   * would invite retry storms from every SDK in the fleet over a usage
+   * signal, not a transaction. The try/catch deliberately bypasses
+   * `setErrorHandler`.
+   */
+  app.post('/events', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { environment } = requireSdkAuth(request);
+    const parsed = eventsBody.parse(request.body);
+
+    try {
+      await recordExposures(deps.exposures, deps.clock, environment, parsed.exposures);
+    } catch (error) {
+      request.log.error({ err: error, reqId: request.id }, 'exposure persistence failed');
+    }
+
+    reply.code(202).send();
   });
 }

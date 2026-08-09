@@ -6,6 +6,7 @@ import { POSTGRES_MIGRATIONS } from '../migrations/index.js';
 import { migrate } from '../migrations/runner.js';
 import { createPostgresApiKeyRepository } from '../postgres/api-key-repository.pg.js';
 import { createPostgresAuditLog } from '../postgres/audit-log.pg.js';
+import { createPostgresExposureRepository } from '../postgres/exposure-repository.pg.js';
 import { createPostgresMigrationConnection } from '../postgres/connection.js';
 import { createPostgresFlagRepository } from '../postgres/flag-repository.pg.js';
 import { createPostgresUnitOfWork } from '../postgres/unit-of-work.pg.js';
@@ -51,6 +52,11 @@ describe.skipIf(!process.env.DATABASE_URL)('postgres', () => {
         keys: createPostgresApiKeyRepository(pool),
         audit: createPostgresAuditLog(pool),
         uow: createPostgresUnitOfWork(pool, clock),
+        exposures: createPostgresExposureRepository(pool),
+        async countExposureRows(): Promise<number> {
+          const result = await pool.query<{ n: string }>('SELECT COUNT(*) AS n FROM exposures');
+          return Number(result.rows[0]?.n ?? 0);
+        },
         clock,
         async insertRawApiKey(row: {
           kind: 'admin' | 'server';

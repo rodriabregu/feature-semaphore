@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import type { AuditLog } from '../application/ports/audit-log.js';
 import type { Clock } from '../application/ports/clock.js';
 import type { ApiKeyRepository } from '../application/ports/api-key-repository.js';
+import type { ExposureRepository } from '../application/ports/exposure-repository.js';
 import type { FlagRepository } from '../application/ports/flag-repository.js';
 import type { UnitOfWork } from '../application/ports/unit-of-work.js';
 import { createSystemClock } from '../infrastructure/clock/system-clock.js';
@@ -15,6 +16,7 @@ import { registerRulesRoutes } from '../infrastructure/http/routes/rules.routes.
 import { registerSdkRoutes } from '../infrastructure/http/routes/sdk.routes.js';
 import { createMemoryApiKeyRepository } from '../infrastructure/persistence/memory/api-key-repository.memory.js';
 import { createMemoryAuditLog } from '../infrastructure/persistence/memory/audit-log.memory.js';
+import { createMemoryExposureRepository } from '../infrastructure/persistence/memory/exposure-repository.memory.js';
 import { createMemoryFlagRepository } from '../infrastructure/persistence/memory/flag-repository.memory.js';
 import { MemoryDatabase } from '../infrastructure/persistence/memory/store.js';
 import { createMemoryUnitOfWork } from '../infrastructure/persistence/memory/unit-of-work.memory.js';
@@ -50,6 +52,7 @@ interface Adapters {
   readonly keys: ApiKeyRepository;
   readonly audit: AuditLog;
   readonly uow: UnitOfWork;
+  readonly exposures: ExposureRepository;
   /** Runs migrations (a no-op for memory) then seeds the admin key. */
   readonly migrateAndSeed: (adminApiKey: string | undefined) => Promise<void>;
 }
@@ -64,6 +67,7 @@ function buildMemoryAdapters(clock: Clock): Adapters {
     keys,
     audit: createMemoryAuditLog(store),
     uow: createMemoryUnitOfWork(db, clock),
+    exposures: createMemoryExposureRepository(store),
     // The memory adapter has no schema to migrate — only the admin-key seed applies.
     migrateAndSeed: (adminApiKey) => seedAdminKey(keys, adminApiKey, clock),
   };
@@ -80,6 +84,8 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
     await import('../infrastructure/persistence/sqlite/audit-log.sqlite.js');
   const { createSqliteUnitOfWork } =
     await import('../infrastructure/persistence/sqlite/unit-of-work.sqlite.js');
+  const { createSqliteExposureRepository } =
+    await import('../infrastructure/persistence/sqlite/exposure-repository.sqlite.js');
 
   const db = openSqliteDatabase(sqliteFile);
   const keys = createSqliteApiKeyRepository(db);
@@ -89,6 +95,7 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
     keys,
     audit: createSqliteAuditLog(db),
     uow: createSqliteUnitOfWork(db, clock),
+    exposures: createSqliteExposureRepository(db),
     migrateAndSeed: async (adminApiKey) => {
       await migrate(createSqliteMigrationConnection(db), SQLITE_MIGRATIONS, () => clock.now());
       await seedAdminKey(keys, adminApiKey, clock);
@@ -109,6 +116,8 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
     await import('../infrastructure/persistence/postgres/audit-log.pg.js');
   const { createPostgresUnitOfWork } =
     await import('../infrastructure/persistence/postgres/unit-of-work.pg.js');
+  const { createPostgresExposureRepository } =
+    await import('../infrastructure/persistence/postgres/exposure-repository.pg.js');
 
   const pool = new Pool({ connectionString: databaseUrl });
   const keys = createPostgresApiKeyRepository(pool);
@@ -118,6 +127,7 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
     keys,
     audit: createPostgresAuditLog(pool),
     uow: createPostgresUnitOfWork(pool, clock),
+    exposures: createPostgresExposureRepository(pool),
     migrateAndSeed: async (adminApiKey) => {
       const lockClient = new Client({ connectionString: databaseUrl });
       await lockClient.connect();
@@ -197,7 +207,7 @@ export async function buildApp(
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys: adapters.keys, clock });
-      registerSdkRoutes(instance, { repo: adapters.repo });
+      registerSdkRoutes(instance, { repo: adapters.repo, exposures: adapters.exposures, clock });
       done();
     },
     { prefix: '/api/v1/sdk' },

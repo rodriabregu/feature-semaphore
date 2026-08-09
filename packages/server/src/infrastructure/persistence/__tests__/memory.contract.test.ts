@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Environment } from '@rodriab/feature-semaphore-core';
 import { createMemoryApiKeyRepository } from '../memory/api-key-repository.memory.js';
 import { createMemoryAuditLog } from '../memory/audit-log.memory.js';
+import { createMemoryExposureRepository } from '../memory/exposure-repository.memory.js';
 import { createMemoryFlagRepository } from '../memory/flag-repository.memory.js';
 import { MemoryDatabase } from '../memory/store.js';
 import { createMemoryUnitOfWork } from '../memory/unit-of-work.memory.js';
@@ -19,6 +20,10 @@ const memoryHarness: AdapterHarness = {
       keys: createMemoryApiKeyRepository(store),
       audit: createMemoryAuditLog(store),
       uow: createMemoryUnitOfWork(db, clock),
+      exposures: createMemoryExposureRepository(store),
+      countExposureRows(): Promise<number> {
+        return Promise.resolve(db.current.exposures.length);
+      },
       clock,
       insertRawApiKey(row: {
         kind: 'admin' | 'server';

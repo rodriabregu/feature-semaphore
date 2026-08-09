@@ -162,3 +162,124 @@ describe('sdk routes: GET /api/v1/sdk/definitions', () => {
     expect(body.environment).toBe('development');
   });
 });
+
+describe('sdk routes: POST /api/v1/sdk/events', () => {
+  it('a body carrying "environment" -> 400 (.strict())', async () => {
+    const testApp = await buildTestApp();
+    const response = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: [
+          {
+            flagKey: 'checkout-v2',
+            value: true,
+            reason: 'FLAG_OFF',
+            count: 1,
+            environment: 'production',
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('a body carrying a timestamp field -> 400 (.strict())', async () => {
+    const testApp = await buildTestApp();
+    const response = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: [
+          {
+            flagKey: 'checkout-v2',
+            value: true,
+            reason: 'FLAG_OFF',
+            count: 1,
+            timestamp: '2026-01-01T00:00:00Z',
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('an unknown flagKey -> 202, and the row is persisted', async () => {
+    const testApp = await buildTestApp();
+    const response = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: [{ flagKey: 'no-such-flag', value: true, reason: 'FLAG_OFF', count: 1 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.body).toBe('');
+    expect(testApp.db.current.exposures.some((e) => e.flagKey === 'no-such-flag')).toBe(true);
+  });
+
+  it('an ExposureRepository that always rejects -> still 202, and the error was logged', async () => {
+    const chunks: string[] = [];
+    const logStream = {
+      write(chunk: string): boolean {
+        chunks.push(chunk);
+        return true;
+      },
+    };
+
+    const testApp = await buildTestApp({
+      exposuresFactory: () => ({
+        recordBatch: () => Promise.reject(new Error('persistence unavailable')),
+      }),
+      logStream,
+    });
+
+    const response = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: [{ flagKey: 'checkout-v2', value: true, reason: 'FLAG_OFF', count: 1 }],
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.body).toBe('');
+    expect(chunks.some((line) => line.includes('exposure persistence failed'))).toBe(true);
+  });
+
+  it('501 exposures -> 400; count: 0 -> 400', async () => {
+    const testApp = await buildTestApp();
+
+    const tooMany = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: Array.from({ length: 501 }, (_, i) => ({
+          flagKey: `flag-${i}`,
+          value: true,
+          reason: 'FLAG_OFF',
+          count: 1,
+        })),
+      },
+    });
+    expect(tooMany.statusCode).toBe(400);
+
+    const zeroCount = await testApp.app.inject({
+      method: 'POST',
+      url: '/api/v1/sdk/events',
+      headers: { ...serverAuthHeader(), 'content-type': 'application/json' },
+      payload: {
+        exposures: [{ flagKey: 'checkout-v2', value: true, reason: 'FLAG_OFF', count: 0 }],
+      },
+    });
+    expect(zeroCount.statusCode).toBe(400);
+  });
+});
