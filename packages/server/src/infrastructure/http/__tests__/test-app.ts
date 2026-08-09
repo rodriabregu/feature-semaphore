@@ -14,9 +14,11 @@ import { registerConfigRoutes } from '../routes/config.routes.js';
 import { registerFlagsRoutes } from '../routes/flags.routes.js';
 import { registerOverridesRoutes } from '../routes/overrides.routes.js';
 import { registerRulesRoutes } from '../routes/rules.routes.js';
+import { registerSdkRoutes } from '../routes/sdk.routes.js';
 
 export const ADMIN_KEY = `fs_admin_${'a'.repeat(43)}`;
 export const SERVER_KEY = `fs_server_${'b'.repeat(43)}`;
+export const PRODUCTION_SERVER_KEY = `fs_server_${'c'.repeat(43)}`;
 
 export function hashKey(raw: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
@@ -59,6 +61,14 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
     createdAt: clock.now(),
     lastUsedAt: null,
   });
+  db.current.apiKeys.push({
+    id: randomUUID(),
+    kind: 'server',
+    environment: 'production',
+    keyHash: hashKey(PRODUCTION_SERVER_KEY),
+    createdAt: clock.now(),
+    lastUsedAt: null,
+  });
 
   const app = Fastify();
   registerErrorHandler(app);
@@ -75,14 +85,10 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
   );
 
   // SIBLING scope, never nested inside `/api/v1` — see `main/composition-root.ts`.
-  // The placeholder `/definitions` route proves the auth boundary until WU3
-  // replaces it with the real `registerSdkRoutes` handler.
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys, clock });
-      instance.get('/definitions', (_request, reply) => {
-        reply.send({ ok: true });
-      });
+      registerSdkRoutes(instance, { repo });
       done();
     },
     { prefix: '/api/v1/sdk' },
@@ -97,4 +103,8 @@ export function adminAuthHeader(): Record<string, string> {
 
 export function serverAuthHeader(): Record<string, string> {
   return { authorization: `Bearer ${SERVER_KEY}` };
+}
+
+export function productionServerAuthHeader(): Record<string, string> {
+  return { authorization: `Bearer ${PRODUCTION_SERVER_KEY}` };
 }

@@ -12,6 +12,7 @@ import { registerConfigRoutes } from '../infrastructure/http/routes/config.route
 import { registerFlagsRoutes } from '../infrastructure/http/routes/flags.routes.js';
 import { registerOverridesRoutes } from '../infrastructure/http/routes/overrides.routes.js';
 import { registerRulesRoutes } from '../infrastructure/http/routes/rules.routes.js';
+import { registerSdkRoutes } from '../infrastructure/http/routes/sdk.routes.js';
 import { createMemoryApiKeyRepository } from '../infrastructure/persistence/memory/api-key-repository.memory.js';
 import { createMemoryAuditLog } from '../infrastructure/persistence/memory/audit-log.memory.js';
 import { createMemoryFlagRepository } from '../infrastructure/persistence/memory/flag-repository.memory.js';
@@ -192,15 +193,11 @@ export async function buildApp(
 
   // A SIBLING Fastify scope, never nested inside `/api/v1` — Fastify hooks are
   // encapsulated per `register` scope, so the management `onRequest` hook
-  // (admin-only) never runs against an SDK request, and vice versa. The
-  // definitions/events handlers land here in WU3/WU4; the placeholder route
-  // below exists only to prove the auth boundary until then.
+  // (admin-only) never runs against an SDK request, and vice versa.
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys: adapters.keys, clock });
-      instance.get('/definitions', (_request, reply: FastifyReply) => {
-        reply.send({ ok: true });
-      });
+      registerSdkRoutes(instance, { repo: adapters.repo });
       done();
     },
     { prefix: '/api/v1/sdk' },
