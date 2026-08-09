@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import type { Environment } from '@rodriab/feature-semaphore-core';
 import type { AuditLog } from '../application/ports/audit-log.js';
 import type { Clock } from '../application/ports/clock.js';
 import type { ApiKeyRepository } from '../application/ports/api-key-repository.js';
@@ -26,6 +27,7 @@ import {
 } from '../infrastructure/persistence/migrations/index.js';
 import { migrate } from '../infrastructure/persistence/migrations/runner.js';
 import { seedAdminKey } from '../infrastructure/persistence/seed/admin-key.js';
+import { seedServerKeys } from '../infrastructure/persistence/seed/server-key.js';
 
 export type DatabaseDriver = 'memory' | 'sqlite' | 'postgres';
 
@@ -34,7 +36,18 @@ export interface CompositionConfig {
   readonly adminApiKey: string | undefined;
   readonly databaseUrl?: string;
   readonly sqliteFile?: string;
+  /**
+   * Optional per environment — the SDK API is optional per environment,
+   * unlike the admin key. An absent env var is tolerated; a SET but
+   * malformed one still fails startup (`seed/server-key.ts`).
+   */
+  readonly serverApiKeys?: Readonly<Record<Environment, string | undefined>>;
 }
+
+const NO_SERVER_KEYS: Readonly<Record<Environment, string | undefined>> = {
+  development: undefined,
+  production: undefined,
+};
 
 export interface Composition {
   readonly app: FastifyInstance;
@@ -53,8 +66,15 @@ interface Adapters {
   readonly audit: AuditLog;
   readonly uow: UnitOfWork;
   readonly exposures: ExposureRepository;
-  /** Runs migrations (a no-op for memory) then seeds the admin key. */
-  readonly migrateAndSeed: (adminApiKey: string | undefined) => Promise<void>;
+  /**
+   * Runs migrations (a no-op for memory), then seeds the admin key, then
+   * seeds the per-environment server keys — same order and same startup
+   * lock in every driver.
+   */
+  readonly migrateAndSeed: (
+    adminApiKey: string | undefined,
+    serverApiKeys: Readonly<Record<Environment, string | undefined>>,
+  ) => Promise<void>;
 }
 
 function buildMemoryAdapters(clock: Clock): Adapters {
@@ -68,8 +88,11 @@ function buildMemoryAdapters(clock: Clock): Adapters {
     audit: createMemoryAuditLog(store),
     uow: createMemoryUnitOfWork(db, clock),
     exposures: createMemoryExposureRepository(store),
-    // The memory adapter has no schema to migrate — only the admin-key seed applies.
-    migrateAndSeed: (adminApiKey) => seedAdminKey(keys, adminApiKey, clock),
+    // The memory adapter has no schema to migrate — only the key seeds apply.
+    migrateAndSeed: async (adminApiKey, serverApiKeys) => {
+      await seedAdminKey(keys, adminApiKey, clock);
+      await seedServerKeys(keys, serverApiKeys, clock);
+    },
   };
 }
 
@@ -96,9 +119,10 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
     audit: createSqliteAuditLog(db),
     uow: createSqliteUnitOfWork(db, clock),
     exposures: createSqliteExposureRepository(db),
-    migrateAndSeed: async (adminApiKey) => {
+    migrateAndSeed: async (adminApiKey, serverApiKeys) => {
       await migrate(createSqliteMigrationConnection(db), SQLITE_MIGRATIONS, () => clock.now());
       await seedAdminKey(keys, adminApiKey, clock);
+      await seedServerKeys(keys, serverApiKeys, clock);
     },
   };
 }
@@ -128,7 +152,7 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
     audit: createPostgresAuditLog(pool),
     uow: createPostgresUnitOfWork(pool, clock),
     exposures: createPostgresExposureRepository(pool),
-    migrateAndSeed: async (adminApiKey) => {
+    migrateAndSeed: async (adminApiKey, serverApiKeys) => {
       const lockClient = new Client({ connectionString: databaseUrl });
       await lockClient.connect();
       try {
@@ -136,6 +160,7 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
           clock.now(),
         );
         await seedAdminKey(keys, adminApiKey, clock);
+        await seedServerKeys(keys, serverApiKeys, clock);
       } finally {
         await lockClient.end();
       }
@@ -214,7 +239,7 @@ export async function buildApp(
   );
 
   const start = async (): Promise<void> => {
-    await adapters.migrateAndSeed(config.adminApiKey);
+    await adapters.migrateAndSeed(config.adminApiKey, config.serverApiKeys ?? NO_SERVER_KEYS);
     isReady = true;
   };
 

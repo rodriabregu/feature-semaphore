@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
-    "build": "tsc -b packages/core/tsconfig.build.json packages/server/tsconfig.build.json",
+    "build": "tsc -b packages/core/tsconfig.build.json packages/server/tsconfig.build.json packages/sdk-node/tsconfig.build.json",
     "vectors:generate": "node scripts/generate-vectors.mjs",
     "vectors:verify": "node scripts/generate-vectors.mjs --check",
     "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs"

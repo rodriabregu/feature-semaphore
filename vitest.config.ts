@@ -14,6 +14,7 @@ export default defineConfig({
       exclude: ['**/__tests__/**', '**/__fixtures__/**'],
       thresholds: {
         'packages/core/src/**': { lines: 95, functions: 95, branches: 95, statements: 95 },
+        'packages/sdk-node/src/**': { lines: 90, functions: 90, branches: 85, statements: 90 },
       },
     },
   },

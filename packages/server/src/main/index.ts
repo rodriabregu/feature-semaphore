@@ -14,6 +14,10 @@ const config: CompositionConfig = {
   adminApiKey: process.env.ADMIN_API_KEY,
   databaseUrl: process.env.DATABASE_URL,
   sqliteFile: process.env.SQLITE_FILE,
+  serverApiKeys: {
+    development: process.env.SERVER_API_KEY_DEVELOPMENT,
+    production: process.env.SERVER_API_KEY_PRODUCTION,
+  },
 };
 
 const port = Number(process.env.PORT ?? '3000');
