@@ -1,0 +1,14 @@
+{
+  "name": "@rodriab/feature-semaphore",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@rodriab/feature-semaphore-core": "workspace:*"
+  }
+}

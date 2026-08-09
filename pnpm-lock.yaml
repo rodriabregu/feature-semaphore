@@ -41,6 +41,12 @@ importers:
 
   packages/core: {}
 
+  packages/sdk-node:
+    dependencies:
+      '@rodriab/feature-semaphore-core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/server:
     dependencies:
       '@rodriab/feature-semaphore-core':
