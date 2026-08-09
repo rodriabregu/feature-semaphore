@@ -396,5 +396,153 @@ export function describeFlagRepositoryContract(harness: AdapterHarness): void {
 
       expect(await ctx.countExposureRows()).toBe(2);
     });
+
+    it('case 23: findBreakdown groups rows by (value, reason) across hour buckets; a hostile flag key round-trips as literal data', async () => {
+      const flagKey = "'); DROP TABLE flags;--";
+      const environment = 'development' as const;
+      const bucketHours = [
+        new Date('2026-01-01T10:00:00.000Z'),
+        new Date('2026-01-01T11:00:00.000Z'),
+        new Date('2026-01-01T12:00:00.000Z'),
+      ];
+
+      for (const bucketHour of bucketHours) {
+        await ctx.exposures.recordBatch([
+          {
+            flagKey,
+            environment,
+            bucketHour,
+            value: true,
+            reason: 'FALLTHROUGH_ROLLOUT',
+            count: 3,
+          },
+          { flagKey, environment, bucketHour, value: false, reason: 'FLAG_OFF', count: 2 },
+        ]);
+      }
+
+      const breakdown = await ctx.exposures.findBreakdown({
+        flagKey,
+        environment,
+        since: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      const byKey = new Map(breakdown.map((b) => [`${b.value}\0${b.reason}`, b]));
+      const rollout = defined(byKey.get('true\0FALLTHROUGH_ROLLOUT'));
+      const off = defined(byKey.get('false\0FLAG_OFF'));
+      expect(rollout.count).toBe(9);
+      expect(off.count).toBe(6);
+      expect(typeof rollout.count).toBe('number');
+      expect(typeof rollout.value).toBe('boolean');
+    });
+
+    it('case 24: findBreakdown excludes a bucket strictly before since, includes the bucket exactly equal to since', async () => {
+      const flagKey = 'flag-24';
+      const environment = 'development' as const;
+      const since = new Date('2026-01-01T10:00:00.000Z');
+
+      await ctx.exposures.recordBatch([
+        {
+          flagKey,
+          environment,
+          bucketHour: new Date('2026-01-01T09:00:00.000Z'), // strictly before since
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 100,
+        },
+        {
+          flagKey,
+          environment,
+          bucketHour: since, // exactly equal to since
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 5,
+        },
+      ]);
+
+      const breakdown = await ctx.exposures.findBreakdown({ flagKey, environment, since });
+      const total = breakdown.reduce((sum, b) => sum + b.count, 0);
+      expect(total).toBe(5);
+    });
+
+    it('case 25: listFlagTotals returns one entry per flag with rows in the window and environment; no entry for a flag only in the other environment', async () => {
+      const since = new Date('2026-01-01T00:00:00.000Z');
+      const bucketHour = new Date('2026-01-01T10:00:00.000Z');
+
+      await ctx.exposures.recordBatch([
+        {
+          flagKey: 'flag-a',
+          environment: 'development',
+          bucketHour,
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 1,
+        },
+        {
+          flagKey: 'flag-b',
+          environment: 'development',
+          bucketHour,
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 2,
+        },
+        {
+          flagKey: 'flag-c',
+          environment: 'development',
+          bucketHour,
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 3,
+        },
+        {
+          flagKey: 'flag-only-production',
+          environment: 'production',
+          bucketHour,
+          value: true,
+          reason: 'FALLTHROUGH_ROLLOUT',
+          count: 999,
+        },
+      ]);
+
+      const totals = await ctx.exposures.listFlagTotals({ environment: 'development', since });
+      const byKey = new Map(totals.map((t) => [t.flagKey, t.total]));
+
+      expect(byKey.get('flag-a')).toBe(1);
+      expect(byKey.get('flag-b')).toBe(2);
+      expect(byKey.get('flag-c')).toBe(3);
+      expect(byKey.has('flag-only-production')).toBe(false);
+    });
+
+    it('case 26: a summed count above 2^31 returns as a number equal to the arithmetic sum', async () => {
+      const flagKey = 'flag-26';
+      const environment = 'development' as const;
+      const bucketHours = [
+        new Date('2026-01-01T10:00:00.000Z'),
+        new Date('2026-01-01T11:00:00.000Z'),
+      ];
+      const big = 2_000_000_000; // each row under the int32 boundary, sum above it
+
+      for (const bucketHour of bucketHours) {
+        await ctx.exposures.recordBatch([
+          {
+            flagKey,
+            environment,
+            bucketHour,
+            value: true,
+            reason: 'FALLTHROUGH_ROLLOUT',
+            count: big,
+          },
+        ]);
+      }
+
+      const breakdown = await ctx.exposures.findBreakdown({
+        flagKey,
+        environment,
+        since: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      expect(breakdown).toHaveLength(1);
+      expect(breakdown[0]?.count).toBe(big * 2);
+      expect(typeof breakdown[0]?.count).toBe('number');
+    });
   });
 }

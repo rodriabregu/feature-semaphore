@@ -73,6 +73,20 @@ describe('composition root', () => {
     expect(prodResponse.statusCode).toBe(401);
   });
 
+  it('row 33: GET /api/v1/exposures with an admin key returns 200 on the real composition root — the management scope really resolves adapters.exposures', async () => {
+    const adminKey = `fs_admin_${'a'.repeat(43)}`;
+    const { app, start } = await buildApp({ databaseDriver: 'memory', adminApiKey: adminKey });
+    await start();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/exposures?env=development',
+      headers: { authorization: `Bearer ${adminKey}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+  });
+
   it('row 39: a malformed SERVER_API_KEY_PRODUCTION fails startup with a named error, never logged', async () => {
     const rawMalformed = 'not-a-real-shape';
     const { start } = await buildApp({

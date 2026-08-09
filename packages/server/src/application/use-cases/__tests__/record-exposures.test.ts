@@ -16,6 +16,8 @@ describe('recordExposures', () => {
         recorded.push([...rows]);
         return Promise.resolve();
       },
+      findBreakdown: () => Promise.reject(new Error('not used by this test')),
+      listFlagTotals: () => Promise.reject(new Error('not used by this test')),
     };
     const clock = { now: () => new Date('2026-03-15T14:47:33.123Z') };
 
@@ -36,6 +38,8 @@ describe('recordExposures', () => {
         recorded.push([...rows]);
         return Promise.resolve();
       },
+      findBreakdown: () => Promise.reject(new Error('not used by this test')),
+      listFlagTotals: () => Promise.reject(new Error('not used by this test')),
     };
     const clock = { now: () => new Date('2026-03-15T14:59:59.999Z') };
 

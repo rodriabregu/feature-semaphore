@@ -30,6 +30,27 @@ describe('migration runner (SQLite)', () => {
     expect(rows).toHaveLength(SQLITE_MIGRATIONS.length);
   });
 
+  it('003 is additive: migrate() twice leaves three rows, 001/002 checksums unchanged', async () => {
+    const conn = createSqliteMigrationConnection(db);
+    await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
+    const firstRun = db
+      .prepare('SELECT version, checksum FROM schema_migrations ORDER BY version')
+      .all() as { version: string; checksum: string }[];
+
+    await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
+    const secondRun = db
+      .prepare('SELECT version, checksum FROM schema_migrations ORDER BY version')
+      .all() as { version: string; checksum: string }[];
+
+    expect(secondRun).toHaveLength(3);
+    expect(SQLITE_MIGRATIONS).toHaveLength(3);
+    expect(secondRun).toEqual(firstRun);
+    const byVersion = new Map(secondRun.map((r) => [r.version, r.checksum]));
+    expect(byVersion.get('001-initial-schema')).toBeDefined();
+    expect(byVersion.get('002-exposures')).toBeDefined();
+    expect(byVersion.get('003-exposures-env-hour-idx')).toBeDefined();
+  });
+
   it('mutating an applied migration checksum aborts the next migrate()', async () => {
     const conn = createSqliteMigrationConnection(db);
     await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
@@ -39,6 +60,27 @@ describe('migration runner (SQLite)', () => {
     await expect(migrate(conn, [mutated], () => new Date())).rejects.toBeInstanceOf(
       MigrationChecksumMismatchError,
     );
+  });
+
+  it('the bulk-read query plan names exposures_env_hour_idx once 003 is applied, a bare SCAN without it', async () => {
+    const bulkQuery = `SELECT "value", reason, SUM("count") AS total FROM exposures
+                        WHERE environment = ? AND bucket_hour >= ? GROUP BY "value", reason`;
+
+    // Baseline: 001 + 002 only, no index yet -> bare full-table scan.
+    const conn = createSqliteMigrationConnection(db);
+    await migrate(conn, SQLITE_MIGRATIONS.slice(0, 2), () => new Date());
+    const beforePlan = db
+      .prepare(bulkQuery.replace('SELECT', 'EXPLAIN QUERY PLAN SELECT'))
+      .all('development', '2026-01-01T00:00:00.000Z') as { detail: string }[];
+    expect(beforePlan.some((row) => /SCAN exposures/i.test(row.detail))).toBe(true);
+    expect(beforePlan.some((row) => /exposures_env_hour_idx/i.test(row.detail))).toBe(false);
+
+    // Apply 003 on top -> the planner picks the new index instead.
+    await migrate(conn, SQLITE_MIGRATIONS, () => new Date());
+    const afterPlan = db
+      .prepare(bulkQuery.replace('SELECT', 'EXPLAIN QUERY PLAN SELECT'))
+      .all('development', '2026-01-01T00:00:00.000Z') as { detail: string }[];
+    expect(afterPlan.some((row) => /exposures_env_hour_idx/i.test(row.detail))).toBe(true);
   });
 
   it('inserting kind=admin with a non-null environment fails the CHECK constraint', async () => {

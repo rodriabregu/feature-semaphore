@@ -14,6 +14,7 @@ import { authPlugin } from '../plugins/auth.js';
 import { sdkAuthPlugin } from '../plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../routes/config.routes.js';
 import { registerEvaluateRoutes } from '../routes/evaluate.routes.js';
+import { registerExposuresRoutes } from '../routes/exposures.routes.js';
 import { registerFlagsRoutes } from '../routes/flags.routes.js';
 import { registerOverridesRoutes } from '../routes/overrides.routes.js';
 import { registerRulesRoutes } from '../routes/rules.routes.js';
@@ -105,6 +106,7 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       registerRulesRoutes(instance, { uow, clock });
       registerOverridesRoutes(instance, { uow, clock });
       registerEvaluateRoutes(instance, { repo });
+      registerExposuresRoutes(instance, { exposures, clock });
       done();
     },
     { prefix: '/api/v1' },

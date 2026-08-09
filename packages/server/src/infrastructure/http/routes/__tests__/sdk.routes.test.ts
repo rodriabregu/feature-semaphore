@@ -236,6 +236,8 @@ describe('sdk routes: POST /api/v1/sdk/events', () => {
     const testApp = await buildTestApp({
       exposuresFactory: () => ({
         recordBatch: () => Promise.reject(new Error('persistence unavailable')),
+        findBreakdown: () => Promise.reject(new Error('not used by this test')),
+        listFlagTotals: () => Promise.reject(new Error('not used by this test')),
       }),
       logStream,
     });

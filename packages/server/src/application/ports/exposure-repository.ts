@@ -19,6 +19,28 @@ export interface ExposureAggregate {
   readonly count: number;
 }
 
+export interface ExposureBreakdown {
+  readonly value: FlagValue; // a real boolean on ALL THREE adapters
+  readonly reason: string;
+  readonly count: number; // a real number on ALL THREE adapters
+}
+
+export interface ExposureFlagTotal {
+  readonly flagKey: string;
+  readonly total: number;
+}
+
+export interface ExposureBreakdownQuery {
+  readonly flagKey: string;
+  readonly environment: Environment;
+  readonly since: Date;
+}
+
+export interface ExposureWindowQuery {
+  readonly environment: Environment;
+  readonly since: Date;
+}
+
 export interface ExposureRepository {
   /**
    * Upsert-increment on the composite key
@@ -27,4 +49,17 @@ export interface ExposureRepository {
    * overwriting it.
    */
   recordBatch(rows: readonly ExposureAggregate[]): Promise<void>;
+
+  /**
+   * Grouped by `(value, reason)` for ONE flag. `since` is INCLUSIVE and
+   * already hour-truncated by the caller. `bucketHour` never leaves the
+   * adapter. ORDER IS NOT GUARANTEED — the use case sorts.
+   */
+  findBreakdown(query: ExposureBreakdownQuery): Promise<readonly ExposureBreakdown[]>;
+
+  /**
+   * One entry per flag with rows in the window, across ALL flags in
+   * `environment`. ORDER IS NOT GUARANTEED.
+   */
+  listFlagTotals(query: ExposureWindowQuery): Promise<readonly ExposureFlagTotal[]>;
 }
