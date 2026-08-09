@@ -35,14 +35,25 @@ export const updateConfigBody = z
 const attributeValue = z.union([z.string(), z.number(), z.boolean()]);
 const ruleBase = { attribute: z.string().min(1), serve: z.boolean(), rollout: rolloutSchema };
 
+/**
+ * `.strict()` is applied to EACH member individually — it does not exist on
+ * `ZodDiscriminatedUnion` itself (only its members can be strictified). Without
+ * this, an unknown key such as `salt` inside a rule is silently stripped
+ * rather than rejected, both here and on the shipped `PUT .../rules` route
+ * that reuses this schema.
+ */
 export const targetingRuleBody = z.discriminatedUnion('operator', [
-  z.object({ ...ruleBase, operator: z.enum(['in', 'not_in']), values: z.array(attributeValue) }),
-  z.object({
-    ...ruleBase,
-    operator: z.enum(['contains', 'starts_with']),
-    values: z.tuple([z.string()]),
-  }),
-  z.object({ ...ruleBase, operator: z.enum(['gt', 'lt']), values: z.tuple([z.number()]) }),
+  z
+    .object({ ...ruleBase, operator: z.enum(['in', 'not_in']), values: z.array(attributeValue) })
+    .strict(),
+  z
+    .object({
+      ...ruleBase,
+      operator: z.enum(['contains', 'starts_with']),
+      values: z.tuple([z.string()]),
+    })
+    .strict(),
+  z.object({ ...ruleBase, operator: z.enum(['gt', 'lt']), values: z.tuple([z.number()]) }).strict(),
 ]);
 
 export const replaceRulesBody = z.object({ rules: z.array(targetingRuleBody) }).strict();

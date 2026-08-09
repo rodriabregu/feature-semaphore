@@ -13,6 +13,7 @@ import { registerErrorHandler } from '../error-handler.js';
 import { authPlugin } from '../plugins/auth.js';
 import { sdkAuthPlugin } from '../plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../routes/config.routes.js';
+import { registerEvaluateRoutes } from '../routes/evaluate.routes.js';
 import { registerFlagsRoutes } from '../routes/flags.routes.js';
 import { registerOverridesRoutes } from '../routes/overrides.routes.js';
 import { registerRulesRoutes } from '../routes/rules.routes.js';
@@ -103,6 +104,7 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
       registerConfigRoutes(instance, { uow, clock });
       registerRulesRoutes(instance, { uow, clock });
       registerOverridesRoutes(instance, { uow, clock });
+      registerEvaluateRoutes(instance, { repo });
       done();
     },
     { prefix: '/api/v1' },

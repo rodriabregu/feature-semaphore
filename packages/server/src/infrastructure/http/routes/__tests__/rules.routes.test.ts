@@ -41,6 +41,28 @@ describe('PUT /flags/:key/config/:env/rules', () => {
     expect(response.headers.etag).toBe('"2"');
   });
 
+  it('an unknown key inside a rule -> 400, never a silent 200 that strips it', async () => {
+    const response = await testApp.app.inject({
+      method: 'PUT',
+      url: '/api/v1/flags/flag-1/config/development/rules',
+      headers: { ...adminAuthHeader(), 'content-type': 'application/json', 'if-match': '1' },
+      payload: {
+        rules: [
+          {
+            attribute: 'country',
+            operator: 'in',
+            values: ['US'],
+            serve: true,
+            rollout: 100,
+            salt: 'x',
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
   it('a stale If-Match -> 412', async () => {
     await testApp.app.inject({
       method: 'PUT',

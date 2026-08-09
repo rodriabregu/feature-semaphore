@@ -11,6 +11,7 @@ import { registerErrorHandler } from '../infrastructure/http/error-handler.js';
 import { authPlugin } from '../infrastructure/http/plugins/auth.js';
 import { sdkAuthPlugin } from '../infrastructure/http/plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../infrastructure/http/routes/config.routes.js';
+import { registerEvaluateRoutes } from '../infrastructure/http/routes/evaluate.routes.js';
 import { registerFlagsRoutes } from '../infrastructure/http/routes/flags.routes.js';
 import { registerOverridesRoutes } from '../infrastructure/http/routes/overrides.routes.js';
 import { registerRulesRoutes } from '../infrastructure/http/routes/rules.routes.js';
@@ -221,6 +222,7 @@ export async function buildApp(
       registerConfigRoutes(instance, { uow: adapters.uow, clock });
       registerRulesRoutes(instance, { uow: adapters.uow, clock });
       registerOverridesRoutes(instance, { uow: adapters.uow, clock });
+      registerEvaluateRoutes(instance, { repo: adapters.repo });
       done();
     },
     { prefix: '/api/v1' },
