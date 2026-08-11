@@ -38,6 +38,44 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/readyz    # 503 until mi
 
 There is no `pnpm start` script yet — run the built entrypoint directly.
 
+### Your first evaluation
+
+Three calls take you from an empty store to an explained evaluation result:
+
+```bash
+export FS="Authorization: Bearer $ADMIN_API_KEY"
+
+# 1. Create a flag — both environments start at version 1, disabled
+curl -s -X POST localhost:3000/api/v1/flags -H "$FS" \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"new-checkout","name":"New checkout"}' > /dev/null
+
+# 2. Enable it in development at a 100% rollout
+curl -s -X PATCH localhost:3000/api/v1/flags/new-checkout/config/development -H "$FS" \
+  -H 'If-Match: "1"' -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"rollout_percentage":100}' > /dev/null
+
+# 3. Ask what a given user would see, and why
+curl -s -X POST localhost:3000/api/v1/evaluate/preview -H "$FS" \
+  -H 'Content-Type: application/json' \
+  -d '{"flag_key":"new-checkout","environment":"development",
+       "context":{"unit_id":"user-42","default_value":false}}' | jq
+```
+
+```json
+{
+  "value": true,
+  "reason": "FALLTHROUGH_ROLLOUT",
+  "flag_key": "new-checkout",
+  "environment": "development",
+  "candidate_applied": false
+}
+```
+
+That `reason` is the point of the whole system — every result tells you which
+decision produced it. Read on for the `If-Match` contract that step 2 used, and
+for the preview endpoint's candidate overlay.
+
 ### Configuration
 
 | Variable                     | Default    | Notes                                                                                                                                    |
@@ -72,6 +110,9 @@ export FS="Authorization: Bearer $ADMIN_API_KEY"
 | `PUT`   | `/api/v1/flags/:key/config/:env/overrides` | Replace per-unit overrides              |
 | `POST`  | `/api/v1/flags/:key/archive`               | Archive, never delete (`204`)           |
 | `GET`   | `/api/v1/flags/:key/audit`                 | Change history, `?limit=` up to 500     |
+| `POST`  | `/api/v1/evaluate/preview`                 | Evaluate without persisting anything    |
+| `GET`   | `/api/v1/flags/:key/exposures`             | Exposure counts for one flag, by reason |
+| `GET`   | `/api/v1/exposures`                        | Exposure totals for every flag          |
 
 `:env` is `development` or `production`. Anything else is `400` — "that is not an
 environment" — never `403`, which means "your key is the wrong kind".
@@ -137,8 +178,97 @@ curl -X PUT localhost:3000/api/v1/flags/new-checkout/config/development/rules -H
 Absent attributes do not match, string comparison is case-sensitive, and `gt`/`lt` are
 numeric-only with no coercion.
 
+### Previewing an evaluation
+
+`POST /api/v1/evaluate/preview` answers "what would this user see, and why" without
+writing anything — no audit row, no exposure event. It reads the flag's **saved**
+config, so with no `candidate` field it is a debugger for what is live right now.
+
+Pass a `candidate` and it overlays the saved config **in memory only**, which lets you
+test a rule set before committing it:
+
+```bash
+curl -s -X POST localhost:3000/api/v1/evaluate/preview -H "$FS" \
+  -H 'Content-Type: application/json' \
+  -d '{"flag_key":"new-checkout","environment":"development",
+       "context":{"unit_id":"user-42","attributes":{"plan":"pro"},"default_value":false},
+       "candidate":{"rules":[{"attribute":"plan","operator":"in","values":["pro"],
+                              "serve":true,"rollout":100}]}}' | jq
+```
+
+Every `candidate` field is optional and only the ones you send are overlaid. `key`,
+`environment`, `salt`, `version` and `archived` are **absent from the schema on
+purpose** — sending one is a `400`, not a silent strip, because a preview that quietly
+ignored a field you set would be worse than no preview at all. The response echoes
+`candidate_applied` so a client can never confuse the two modes.
+
+`context.attributes` is deliberately **not** strict — an application attribute may
+legitimately be called `salt`. It is user data, and it can never reach a flag field.
+
+### Reading exposures
+
+The SDK reports which flags it evaluated (see [Using the Node SDK](#using-the-node-sdk)).
+Both read endpoints take the same query:
+
+| Param   | Required | Notes                                                           |
+| ------- | -------- | --------------------------------------------------------------- |
+| `env`   | yes      | `development` or `production`                                   |
+| `since` | no       | ISO timestamp. Defaults to 24h ago, capped at a 30-day lookback |
+
+A `since` in the future, or further back than 30 days, is a `400`. An unknown query
+param is also a `400`, matching the audit endpoint.
+
+```bash
+# One flag, broken down by evaluation reason
+curl -s "localhost:3000/api/v1/flags/new-checkout/exposures?env=development" -H "$FS" | jq
+```
+
+```json
+{
+  "flag_key": "new-checkout",
+  "environment": "development",
+  "since": "2026-08-10T12:00:00.000Z",
+  "total": 1432,
+  "breakdown": [
+    { "value": true, "reason": "FALLTHROUGH_ROLLOUT", "count": 1301 },
+    { "value": false, "reason": "OVERRIDE", "count": 131 }
+  ]
+}
+```
+
+`breakdown` is sorted by `count` descending, then by `reason`. `since` is truncated to
+the UTC hour, so the window you get back is the one that was actually queried rather
+than the instant you happened to ask.
+
+`total` is derived from `breakdown`, never a second query, so the two can never
+disagree. `GET /api/v1/exposures` is the fleet-wide sibling — one total per flag, no
+breakdown — and lives at the top level rather than under `/flags/` because a flag could
+legally be keyed `exposures` and a static route would permanently shadow it.
+
 Errors across the whole surface are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
 `application/problem+json`.
+
+## The SDK API
+
+Two routes sit under `/api/v1/sdk` in a separate auth scope. They take a `server`-kind
+key, **not** the admin key, and the key alone determines the environment — there is no
+`env` parameter to get wrong.
+
+| Method | Path                      | Purpose                                         |
+| ------ | ------------------------- | ----------------------------------------------- |
+| `GET`  | `/api/v1/sdk/definitions` | Every flag definition for the key's environment |
+| `POST` | `/api/v1/sdk/events`      | Report evaluated exposures (`202`)              |
+
+`GET /definitions` emits an `ETag` and honours `If-None-Match` with a `304`, which is
+what makes the SDK's polling loop cheap. It also sets `Vary: Authorization` and
+`Cache-Control: private, no-cache`, because the payload differs per environment and
+must never land in a shared cache.
+
+`POST /events` **always answers `202`**, even when persistence fails. A telemetry write
+is not a transaction, and a `5xx` would invite a retry storm from every SDK instance in
+the fleet over a usage signal. The one exception is a malformed body, which is a `400`
+— that means the SDK's own serialiser is broken, the single failure it can actually act
+on. You normally never call this route yourself; the SDK does it on its flush path.
 
 ## Using the Node SDK
 
