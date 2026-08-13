@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import type { LastModified } from './last-modified.js';
 
 export interface FlagListRowData {
@@ -27,6 +28,11 @@ function formatLastModified(lastModified: LastModified): string {
  * requires: key, per-environment state (enabled + rollout %), last modified
  * (labelled by its source environment), and the combined 24h evaluation
  * count.
+ *
+ * The key cell is a `Link`, which is what makes the detail screen reachable
+ * at all — routing links are presentational here by the same reading that
+ * makes `NavItem` presentational: the rule this project follows is that a
+ * presentational component does no FETCHING, and a link fetches nothing.
  */
 export function FlagListView({ rows }: FlagListViewProps): ReactElement {
   return (
@@ -44,7 +50,9 @@ export function FlagListView({ rows }: FlagListViewProps): ReactElement {
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
-            <th scope="row">{row.key}</th>
+            <th scope="row">
+              <Link to={`/flags/${row.key}`}>{row.key}</Link>
+            </th>
             <td>{environmentState(row.development)}</td>
             <td>{environmentState(row.production)}</td>
             <td>{formatLastModified(row.lastModified)}</td>

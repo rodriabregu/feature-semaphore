@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { FlagListPage } from '../FlagListPage.js';
 import type { Environment, FlagListResponse } from '../../../api/types.js';
 
@@ -57,7 +58,9 @@ function renderPage(): void {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={queryClient}>
-      <FlagListPage />
+      <MemoryRouter>
+        <FlagListPage />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -108,5 +111,42 @@ describe('FlagListPage — no N+1 for evaluations (row 50)', () => {
     }
     // flag-5: dev total = 5*1 = 5, prod total = 5*2 = 10, combined = 15
     expect(within(row5).getByText('15')).toBeInTheDocument();
+  });
+});
+
+describe('FlagListPage — every row links to its detail screen', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * The `/flags/:flagKey` route and the whole detail screen shipped before
+   * anything linked to them, so the list rendered as a dead end: four screens
+   * existed and an operator could not reach the one that edits. Asserted here,
+   * through the page rather than the presentational component, because the
+   * three wiring gaps in this phase were all invisible to component-level
+   * tests — every one of them needed the assembly, not the part.
+   */
+  it('renders each flag key as a link to /flags/<key>', async () => {
+    const flagsResponse = buildFlagsResponse();
+    const devExposures = buildExposuresResponse('development', 1);
+    const prodExposures = buildExposuresResponse('production', 2);
+
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = input as string;
+      if (url.includes('/api/exposures') && url.includes('env=development')) {
+        return Promise.resolve(jsonResponse(devExposures));
+      }
+      if (url.includes('/api/exposures') && url.includes('env=production')) {
+        return Promise.resolve(jsonResponse(prodExposures));
+      }
+      return Promise.resolve(jsonResponse(flagsResponse));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPage();
+
+    const link = await screen.findByRole('link', { name: 'flag-5' });
+    expect(link).toHaveAttribute('href', '/flags/flag-5');
   });
 });
