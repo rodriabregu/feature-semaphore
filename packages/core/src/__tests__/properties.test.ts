@@ -1,7 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { bucket, rolloutThreshold } from '../bucketing.js';
 import { evaluate } from '../evaluate.js';
 import type { EvalContext, FlagDefinition } from '../types.js';
+
+/**
+ * These five properties are CPU-bound by design — the monotonicity case alone
+ * computes a million buckets (10,000 unit ids x 100 rollout levels), and the
+ * distribution cases hash 100,000 each. Sample sizes are the whole point: they
+ * are what make a distribution claim meaningful, so they must never be trimmed
+ * to fit a clock.
+ *
+ * The default 5s budget was ample when this file ran alongside ~20 others. It
+ * is not a property of this test that changed, but the parallel load around it:
+ * the workspace suite crossed 80 files and monotonicity began timing out at
+ * ~5.6s under contention while still finishing in 2.5s in isolation. This
+ * timeout is sized for a loaded machine, not for the work itself.
+ */
+vi.setConfig({ testTimeout: 30_000 });
 
 /** `s = (s * 1664525 + 1013904223) mod 2^32` — matches scripts/generate-vectors.mjs's LCG. */
 function makeLcg(seed: number): () => number {
