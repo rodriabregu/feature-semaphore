@@ -5,6 +5,7 @@ import { SESSION_EXPIRED_EVENT, sessionEvents } from '../api/client.js';
 import { Shell } from './Shell.js';
 import { LoginScreen } from './LoginScreen.js';
 import { FlagListPage } from '../features/flag-list/FlagListPage.js';
+import { FlagDetailPage } from '../features/flag-detail/FlagDetailPage.js';
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ export function App(): ReactElement {
                     against the remaining path under this wildcard mount point. */}
                 <Routes>
                   <Route path="/" element={<FlagListPage />} />
+                  <Route path="/flags/:flagKey" element={<FlagDetailPage />} />
                 </Routes>
               </Shell>
             }
