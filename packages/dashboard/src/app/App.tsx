@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SESSION_EXPIRED_EVENT, sessionEvents } from '../api/client.js';
 import { Shell } from './Shell.js';
 import { LoginScreen } from './LoginScreen.js';
-import { DashboardHome } from './DashboardHome.js';
+import { FlagListPage } from '../features/flag-list/FlagListPage.js';
 
 const queryClient = new QueryClient();
 
@@ -41,7 +41,12 @@ export function App(): ReactElement {
             path="/*"
             element={
               <Shell>
-                <DashboardHome />
+                {/* D3 replaces the root route's content with the real flag-list
+                    screen, not the Shell itself. A nested `<Routes>` matches
+                    against the remaining path under this wildcard mount point. */}
+                <Routes>
+                  <Route path="/" element={<FlagListPage />} />
+                </Routes>
               </Shell>
             }
           />
