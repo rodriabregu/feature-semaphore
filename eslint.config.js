@@ -154,6 +154,35 @@ export default defineConfig(
     },
   },
   {
+    // D3: the read-only gate's whole guarantee rests on the registrar being
+    // the ONLY module that can register a proxied route — a path absent from
+    // `PROXY_ROUTES` is a 404 by construction, not a runtime check, and that
+    // is only true if nothing else in packages/bff/src/http/** can call
+    // app.route/get/post/put/patch/delete. Same file-scoped-carve-out
+    // technique as the packages/core purity ban (eslint.config.js:54-91) and
+    // the dashboard's components/** fetch ban above. `proxy/register-proxy.ts`
+    // (the registrar) and `routes/session.routes.ts` (login/logout, the only
+    // other route-registering module by design) are exempt; test fixtures
+    // legitimately register ad-hoc routes on scoped test apps.
+    files: ['packages/bff/src/http/**/*.{ts,js}'],
+    ignores: [
+      'packages/bff/src/http/**/__tests__/**',
+      'packages/bff/src/http/proxy/register-proxy.*',
+      'packages/bff/src/http/routes/session.routes.*',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.type='MemberExpression'][callee.property.name=/^(get|post|put|patch|delete|route)$/]",
+          message:
+            'Route registration is confined to proxy/register-proxy.ts (proxied routes) and routes/session.routes.ts (login/logout) — no other module in packages/bff/src/http/** may call app.route()/get()/post()/put()/patch()/delete().',
+        },
+      ],
+    },
+  },
+  {
     // Plain JS/config files: reset to the untyped parser. typescript-eslint's
     // `base` config sets the type-aware parser for ALL files unconditionally
     // (files: undefined), so JS files must explicitly opt back out.

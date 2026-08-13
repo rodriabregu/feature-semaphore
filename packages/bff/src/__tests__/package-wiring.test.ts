@@ -38,6 +38,7 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
       adminApiKey: VALID_ENV.ADMIN_API_KEY,
       dashboardPassword: 'correct-horse-battery-staple',
       cookieSecure: true,
+      readOnly: false,
     });
   });
 

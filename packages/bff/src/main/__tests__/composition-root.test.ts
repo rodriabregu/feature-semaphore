@@ -6,6 +6,7 @@ const VALID_CONFIG = {
   adminApiKey: `fs_admin_${'a'.repeat(43)}`,
   dashboardPassword: 'correct-horse-battery-staple',
   cookieSecure: true,
+  readOnly: false,
 };
 
 describe('composition root', () => {

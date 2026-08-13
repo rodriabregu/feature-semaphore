@@ -72,6 +72,7 @@ describe('sessionGuardPlugin', () => {
         adminApiKey: `fs_admin_${'a'.repeat(43)}`,
         dashboardPassword: DASHBOARD_PASSWORD,
         cookieSecure: true,
+        readOnly: false,
       },
       sessions,
       clock,

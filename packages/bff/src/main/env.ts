@@ -10,6 +10,7 @@ export interface CompositionConfig {
   readonly adminApiKey: string;
   readonly dashboardPassword: string;
   readonly cookieSecure: boolean;
+  readonly readOnly: boolean;
 }
 
 function requireEnv(
@@ -33,6 +34,17 @@ function readCookieSecure(env: NodeJS.ProcessEnv | Record<string, string | undef
 }
 
 /**
+ * Opposite exact-string direction from `COOKIE_SECURE` on purpose (design D8,
+ * row 29): each variable defaults to the SAFE value. Only the exact string
+ * `'true'` enables read-only mode — `'false'`/`'FALSE'`/`'0'`/`''`/unset all
+ * leave mutations allowed, the same reasoning that keeps `readCookieSecure`
+ * its own explicit check rather than a shared truthy-coercion helper.
+ */
+function readReadOnlyMode(env: NodeJS.ProcessEnv | Record<string, string | undefined>): boolean {
+  return env.READ_ONLY_MODE === 'true';
+}
+
+/**
  * Reads the required env vars, throwing eagerly rather than deferring the
  * check to `start()` (unlike the server's lazy admin-key check): none of
  * these three variables gates an async migration, so there is no reason to
@@ -46,5 +58,6 @@ export function readCompositionConfig(
     adminApiKey: requireEnv(env, 'ADMIN_API_KEY'),
     dashboardPassword: requireEnv(env, 'DASHBOARD_PASSWORD'),
     cookieSecure: readCookieSecure(env),
+    readOnly: readReadOnlyMode(env),
   };
 }

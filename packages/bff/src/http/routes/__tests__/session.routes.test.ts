@@ -29,6 +29,7 @@ async function buildTestApp(options: { cookieSecure?: boolean } = {}) {
       adminApiKey: ADMIN_API_KEY,
       dashboardPassword: DASHBOARD_PASSWORD,
       cookieSecure: options.cookieSecure ?? true,
+      readOnly: false,
     },
     sessions,
     clock,

@@ -28,3 +28,26 @@ describe('COOKIE_SECURE — row 22', () => {
     },
   );
 });
+
+describe('READ_ONLY_MODE — row 29', () => {
+  it("enables read-only only for the exact string 'true'", () => {
+    const config = readCompositionConfig({ ...BASE_ENV, READ_ONLY_MODE: 'true' });
+    expect(config.readOnly).toBe(true);
+  });
+
+  const disabledCases: readonly [label: string, value: string | undefined][] = [
+    ['false', 'false'],
+    ['FALSE', 'FALSE'],
+    ['0', '0'],
+    ['empty string', ''],
+    ['unset', undefined],
+  ];
+
+  it.each(disabledCases)(
+    'leaves mutations allowed for %s (anything but the exact string "true")',
+    (_label, value) => {
+      const env = value === undefined ? { ...BASE_ENV } : { ...BASE_ENV, READ_ONLY_MODE: value };
+      expect(readCompositionConfig(env).readOnly).toBe(false);
+    },
+  );
+});
