@@ -3,6 +3,9 @@ import { defineConfig } from 'eslint/config';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import reactPlugin from 'eslint-plugin-react';
+import reactHooksPlugin from 'eslint-plugin-react-hooks';
+import jsxA11yPlugin from 'eslint-plugin-jsx-a11y';
 
 export default defineConfig(
   {
@@ -15,7 +18,11 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['vitest.config.ts', 'packages/*/vitest.config.ts'],
+          allowDefaultProject: [
+            'vitest.config.ts',
+            'packages/*/vitest.config.ts',
+            'packages/*/vite.config.ts',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -95,6 +102,51 @@ export default defineConfig(
             {
               group: ['**/packages/core/**'],
               message: 'crosscheck-vectors.mjs must stay independent of packages/core.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // D1: React/hooks/a11y linting, scoped to the dashboard only — no other
+    // package renders JSX or touches the DOM.
+    files: ['packages/dashboard/src/**/*.{ts,tsx}'],
+    plugins: {
+      react: reactPlugin,
+      'react-hooks': reactHooksPlugin,
+      'jsx-a11y': jsxA11yPlugin,
+    },
+    rules: {
+      ...reactPlugin.configs.flat.recommended.rules,
+      ...reactPlugin.configs.flat['jsx-runtime'].rules,
+      ...reactHooksPlugin.configs.flat['recommended-latest'].rules,
+      ...jsxA11yPlugin.configs.recommended.rules,
+    },
+    languageOptions: {
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    settings: {
+      // Pinned rather than 'detect': react/react-dom are not installed until
+      // D2 adds the app shell, and 'detect' would fail with nothing to find.
+      react: { version: '19.0.0' },
+    },
+  },
+  {
+    // D1 / D3: `components/**` are pure, prop-driven, and lint-forbidden from
+    // fetching — the only place TanStack Query may be imported is `features/`
+    // (the container layer) or `api/`. Mirrors the `packages/core` purity ban
+    // (eslint.config.js:58-83) as the same file-scoped-carve-out technique.
+    files: ['packages/dashboard/src/components/**/*.{ts,tsx,js}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@tanstack/react-query',
+              message:
+                'components/** must stay presentational — fetch only from features/ or api/.',
             },
           ],
         },

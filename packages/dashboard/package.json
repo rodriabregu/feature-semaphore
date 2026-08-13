@@ -1,0 +1,15 @@
+{
+  "name": "@rodriab/feature-semaphore-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "7.3.6",
+    "@vitejs/plugin-react": "5.0.4",
+    "jsdom": "30.0.1",
+    "@testing-library/jest-dom": "7.0.1"
+  }
+}

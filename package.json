@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b",
-    "build": "tsc -b packages/core/tsconfig.build.json packages/server/tsconfig.build.json packages/sdk-node/tsconfig.build.json packages/bff/tsconfig.build.json",
+    "build": "tsc -b packages/core/tsconfig.build.json packages/server/tsconfig.build.json packages/sdk-node/tsconfig.build.json packages/bff/tsconfig.build.json && pnpm --filter @rodriab/feature-semaphore-dashboard run build",
     "vectors:generate": "node scripts/generate-vectors.mjs",
     "vectors:verify": "node scripts/generate-vectors.mjs --check",
     "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs"
@@ -23,6 +23,9 @@
     "@types/node": "^22.20.1",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.8.0",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react": "7.37.5",
+    "eslint-plugin-react-hooks": "7.1.1",
     "globals": "^17.8.0",
     "murmurhash3js-revisited": "3.0.0",
     "prettier": "^3.9.6",
