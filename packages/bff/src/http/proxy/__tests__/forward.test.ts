@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Clock } from '../../../ports/clock.js';
 import type { Delay } from '../../../ports/delay.js';
 import { buildTestBff, TEST_ADMIN_API_KEY } from '../../__tests__/test-bff.js';
-import type { ProxyRoute } from '../route-table.js';
+import { PROXY_ROUTES, type ProxyRoute } from '../route-table.js';
 
 const FAKE_CLOCK: Clock = { now: () => new Date('2026-01-01T00:00:00Z') };
 const FAKE_DELAY: Delay = { wait: () => Promise.resolve() };
@@ -306,5 +306,106 @@ describe('forward — an unreachable upstream surfaces as a BFF-namespaced 502 (
     expect(problem.type).toContain('feature-semaphore.dev/problems/bff');
     expect(problem.status).toBe(502);
     expect(logs.some((line) => line.includes('upstream network down'))).toBe(true);
+  });
+});
+
+describe('forward — PUT rules/overrides share the same fidelity as PATCH config (row 43)', () => {
+  it.each([
+    { path: '/flags/demo/config/production/rules', payload: { rules: [] } },
+    { path: '/flags/demo/config/production/overrides', payload: { overrides: [] } },
+  ])(
+    '$path forwards If-Match verbatim and returns the upstream ETag/body unmodified',
+    async ({ path, payload }) => {
+      let capturedHeaders: Record<string, string> | undefined;
+      const fetchFn = vi.fn((_url: string, init?: RequestInit) => {
+        capturedHeaders = init?.headers as Record<string, string>;
+        return Promise.resolve(
+          new Response('{"version":4}', { status: 200, headers: { etag: '"4"' } }),
+        );
+      });
+      const { app, mintSessionCookie } = buildTestBff({
+        fetchFn: fetchFn as unknown as typeof fetch,
+        clock: FAKE_CLOCK,
+        delay: FAKE_DELAY,
+        readOnly: false,
+        routes: PROXY_ROUTES,
+      });
+
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/api${path}`,
+        headers: { cookie: mintSessionCookie(), 'if-match': '"3"' },
+        payload,
+      });
+
+      expect(capturedHeaders?.['if-match']).toBe('"3"');
+      expect(response.statusCode).toBe(200);
+      expect(response.headers.etag).toBe('"4"');
+      expect(response.payload).toBe('{"version":4}');
+    },
+  );
+
+  it.each([
+    { path: '/flags/demo/config/production/rules', payload: { rules: [] } },
+    { path: '/flags/demo/config/production/overrides', payload: { overrides: [] } },
+  ])('$path is refused under READ_ONLY_MODE, upstream never called', async ({ path, payload }) => {
+    const fetchFn = vi.fn();
+    const { app, mintSessionCookie } = buildTestBff({
+      fetchFn,
+      clock: FAKE_CLOCK,
+      delay: FAKE_DELAY,
+      readOnly: true,
+      routes: PROXY_ROUTES,
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api${path}`,
+      headers: { cookie: mintSessionCookie(), 'if-match': '"3"' },
+      payload,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('a 412 conflict on either route keeps expectedVersion/actualVersion intact', async () => {
+    const problemBody = JSON.stringify({
+      type: 'https://feature-semaphore.dev/problems/version-conflict',
+      title: 'Version conflict',
+      status: 412,
+      detail: 'Version conflict',
+      instance: '/api/v1/flags/demo/config/production/rules',
+      expectedVersion: 3,
+      actualVersion: 5,
+    });
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(problemBody, {
+        status: 412,
+        headers: { 'content-type': 'application/problem+json' },
+      }),
+    );
+    const { app, mintSessionCookie } = buildTestBff({
+      fetchFn,
+      clock: FAKE_CLOCK,
+      delay: FAKE_DELAY,
+      readOnly: false,
+      routes: PROXY_ROUTES,
+    });
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/flags/demo/config/production/rules',
+      headers: { cookie: mintSessionCookie(), 'if-match': '"3"' },
+      payload: { rules: [] },
+    });
+
+    expect(response.statusCode).toBe(412);
+    const parsed = JSON.parse(response.payload) as {
+      expectedVersion: number;
+      actualVersion: number;
+    };
+    expect(parsed.expectedVersion).toBe(3);
+    expect(parsed.actualVersion).toBe(5);
   });
 });

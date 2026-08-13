@@ -35,4 +35,8 @@ export const PROXY_ROUTES = [
   { method: 'GET', path: '/flags', mutating: false },
   { method: 'GET', path: '/flags/:key', mutating: false },
   { method: 'PATCH', path: '/flags/:key/config/:env', mutating: true },
+  // B4: rules and overrides share config's exact If-Match/ETag/412 fidelity
+  // (row 43) — no new `forward.ts` logic, only these declarative rows.
+  { method: 'PUT', path: '/flags/:key/config/:env/rules', mutating: true },
+  { method: 'PUT', path: '/flags/:key/config/:env/overrides', mutating: true },
 ] as const satisfies readonly ProxyRoute[];
