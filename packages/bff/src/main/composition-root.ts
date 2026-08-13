@@ -1,5 +1,11 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
+import fastifyCookie from '@fastify/cookie';
 import type { CompositionConfig } from './env.js';
+import { createSystemClock } from '../system-clock.js';
+import { createTimersDelay } from '../timers-delay.js';
+import { createLoginThrottle } from '../http/plugins/login-throttle.js';
+import { registerSessionRoutes } from '../http/routes/session.routes.js';
+import { createMemorySessionStore } from '../session/session-store.js';
 
 export type { CompositionConfig } from './env.js';
 
@@ -15,14 +21,22 @@ export interface Composition {
 }
 
 /**
- * `config` is accepted now, ahead of any consumer, so every later slice
- * (session, proxy) wires into one stable signature rather than widening it
- * per slice.
+ * Wires the session/login slice: the memory session store, the injectable
+ * `Delay`-backed login throttle, and `@fastify/cookie` with signing
+ * disabled (the token is opaque and the store is authoritative, so a
+ * signature would guard nothing). The proxy scope (B3a+) will register its
+ * own guarded routes alongside `sessionGuardPlugin`.
  */
-export function buildApp(config: CompositionConfig): Promise<Composition> {
-  void config;
-
+export async function buildApp(config: CompositionConfig): Promise<Composition> {
   const app = Fastify({ logger: false });
+  await app.register(fastifyCookie);
+
+  const clock = createSystemClock();
+  const sessions = createMemorySessionStore();
+  const delay = createTimersDelay();
+  const throttle = createLoginThrottle(delay);
+
+  registerSessionRoutes(app, { config, sessions, clock, throttle });
 
   let isReady = false;
   app.get('/healthz', (_request, reply: FastifyReply) => {
@@ -36,12 +50,10 @@ export function buildApp(config: CompositionConfig): Promise<Composition> {
     reply.send({ status: 'ready' });
   });
 
-  // Not `async` — nothing here awaits yet. Kept Promise-returning so later
-  // slices (session, proxy) can add real awaits without widening the signature.
   const start = (): Promise<void> => {
     isReady = true;
     return Promise.resolve();
   };
 
-  return Promise.resolve({ app, start });
+  return { app, start };
 }

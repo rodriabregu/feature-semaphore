@@ -5,6 +5,7 @@ const VALID_CONFIG = {
   upstreamUrl: 'http://localhost:3000',
   adminApiKey: `fs_admin_${'a'.repeat(43)}`,
   dashboardPassword: 'correct-horse-battery-staple',
+  cookieSecure: true,
 };
 
 describe('composition root', () => {

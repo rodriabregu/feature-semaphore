@@ -37,6 +37,7 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
       upstreamUrl: 'http://localhost:3000',
       adminApiKey: VALID_ENV.ADMIN_API_KEY,
       dashboardPassword: 'correct-horse-battery-staple',
+      cookieSecure: true,
     });
   });
 

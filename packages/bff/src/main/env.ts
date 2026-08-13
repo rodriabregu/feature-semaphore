@@ -9,6 +9,7 @@ export interface CompositionConfig {
   readonly upstreamUrl: string;
   readonly adminApiKey: string;
   readonly dashboardPassword: string;
+  readonly cookieSecure: boolean;
 }
 
 function requireEnv(
@@ -18,6 +19,17 @@ function requireEnv(
   const value = env[name];
   if (!value) throw new Error(`${name} must be set — no default is provided`);
   return value;
+}
+
+/**
+ * Opposite exact-string direction from `READ_ONLY_MODE` (design D8) on
+ * purpose: each variable defaults to the SAFE value. A shared
+ * truthy-coercion helper would make `COOKIE_SECURE=false` the only way to
+ * disable it by accident sharing logic with a variable whose safe default
+ * points the other way — kept as its own explicit check instead.
+ */
+function readCookieSecure(env: NodeJS.ProcessEnv | Record<string, string | undefined>): boolean {
+  return env.COOKIE_SECURE !== 'false';
 }
 
 /**
@@ -33,5 +45,6 @@ export function readCompositionConfig(
     upstreamUrl: requireEnv(env, 'UPSTREAM_URL'),
     adminApiKey: requireEnv(env, 'ADMIN_API_KEY'),
     dashboardPassword: requireEnv(env, 'DASHBOARD_PASSWORD'),
+    cookieSecure: readCookieSecure(env),
   };
 }
