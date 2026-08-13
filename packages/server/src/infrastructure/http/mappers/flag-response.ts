@@ -19,13 +19,18 @@ function overridesToWire(overrides: readonly PersistedOverride[]): Record<string
   return Object.fromEntries(overrides.map((o) => [o.unitId, o.serve]));
 }
 
-function configToWire(config: FlagConfig): Record<string, unknown> {
+/** Exported for its own pinned-shape test — S1 adds `updated_at`, per environment. */
+export function configToWire(config: FlagConfig): Record<string, unknown> {
   return {
     enabled: config.enabled,
     off_value: config.offValue,
     on_value: config.onValue,
     rollout_percentage: config.rolloutPercentage,
     salt: config.salt,
+    // Explicit `.toISOString()` rather than relying on Fastify's JSON
+    // serialization calling `Date.prototype.toJSON` implicitly — the house
+    // rule that a coercion should be visible in code.
+    updated_at: config.updatedAt.toISOString(),
     version: config.version,
   };
 }
