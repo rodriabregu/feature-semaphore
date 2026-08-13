@@ -22,6 +22,11 @@ export default defineConfig(
             'vitest.config.ts',
             'packages/*/vitest.config.ts',
             'packages/*/vite.config.ts',
+            // D8, row 62: `packages/__tests__/` holds a root-level guard for
+            // the root `vitest.config.ts` itself — it belongs to no
+            // package's own tsconfig, same reasoning as the config files
+            // above.
+            'packages/__tests__/*.test.ts',
           ],
         },
         tsconfigRootDir: import.meta.dirname,

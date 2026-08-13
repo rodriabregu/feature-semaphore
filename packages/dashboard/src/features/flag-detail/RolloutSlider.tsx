@@ -29,8 +29,19 @@ export function RolloutSlider({ id, label, value, onCommit }: RolloutSliderProps
     setDraft(Number(event.target.value));
   };
 
+  /**
+   * Fires ONLY when `draft` actually differs from the last-committed `value`
+   * (D8, row 64 fix). `onKeyUp`/`onMouseUp` otherwise fire unconditionally —
+   * including the Tab key's own keyup, which a real browser delivers to
+   * whichever element currently holds focus. Without this guard, a keyboard
+   * user merely tabbing INTO the slider (never touching its value) would
+   * spuriously commit the unchanged value, which for a production rollout
+   * (confirmation tier `modal`) opened an unwanted confirmation dialog.
+   */
   const commit = (): void => {
-    onCommit(draft);
+    if (draft !== value) {
+      onCommit(draft);
+    }
   };
 
   return (
