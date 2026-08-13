@@ -7,6 +7,7 @@ import { LoginScreen } from './LoginScreen.js';
 import { FlagListPage } from '../features/flag-list/FlagListPage.js';
 import { FlagDetailPage } from '../features/flag-detail/FlagDetailPage.js';
 import { PreviewPage } from '../features/preview/PreviewPage.js';
+import { AuditPage } from '../features/audit/AuditPage.js';
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ export function App(): ReactElement {
                   <Route path="/" element={<FlagListPage />} />
                   <Route path="/flags/:flagKey" element={<FlagDetailPage />} />
                   <Route path="/preview" element={<PreviewPage />} />
+                  <Route path="/audit" element={<AuditPage />} />
                 </Routes>
               </Shell>
             }

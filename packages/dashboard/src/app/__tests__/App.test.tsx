@@ -118,4 +118,40 @@ describe('App — production router wiring (D5b)', () => {
       expect.objectContaining({ method: 'POST' }),
     );
   });
+
+  it('reaches AuditPage via /audit through the real router (D7)', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonResponse({
+          entries: [
+            {
+              actor: 'key-app-wiring',
+              flagKey: 'app-wiring-audit',
+              environment: 'production',
+              action: 'config.updated',
+              before: { rollout_percentage: 10 },
+              after: { rollout_percentage: 20 },
+              createdAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    navigateTo('/audit');
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Audit' });
+    await userEvent.type(screen.getByLabelText('Flag key'), 'app-wiring-audit');
+    await userEvent.click(screen.getByRole('button', { name: 'Load audit log' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/flags/app-wiring-audit/audit?limit=50',
+        expect.anything(),
+      );
+    });
+    await screen.findByText('System (API key): key-app-wiring');
+  });
 });

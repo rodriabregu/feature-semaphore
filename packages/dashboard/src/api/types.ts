@@ -92,3 +92,25 @@ export interface PreviewResponse {
   readonly environment: Environment;
   readonly candidate_applied: boolean;
 }
+
+/**
+ * `GET /flags/:key/audit` entry shape — camelCase, mirroring
+ * `packages/server/src/application/ports/audit-log.ts`'s `AuditEntry`
+ * verbatim, since the route sends `{ entries }` with zero mapping (design
+ * D7). `actor` is an opaque `api_keys.id` (audit-log.ts:7) — never a human
+ * name, never rendered as one. `before`/`after` are full untyped snapshots.
+ */
+export interface AuditEntryWire {
+  readonly actor: string;
+  readonly flagKey: string;
+  readonly environment: Environment | null;
+  readonly action: string;
+  readonly before: unknown;
+  readonly after: unknown;
+  readonly createdAt: string;
+}
+
+/** `GET /flags/:key/audit` response shape — `{ entries: [...] }`. */
+export interface AuditResponse {
+  readonly entries: readonly AuditEntryWire[];
+}
