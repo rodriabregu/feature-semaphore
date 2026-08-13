@@ -1,0 +1,10 @@
+{
+  "name": "@rodriab/feature-semaphore-bff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "dependencies": {
+    "fastify": "5.11.2"
+  }
+}
