@@ -169,6 +169,16 @@ export default defineConfig(
       'packages/bff/src/http/**/__tests__/**',
       'packages/bff/src/http/proxy/register-proxy.*',
       'packages/bff/src/http/routes/session.routes.*',
+      // `forward.ts` (B3b) never receives a `FastifyInstance` — only
+      // `ProxyDeps`, `FastifyRequest` and `FastifyReply`, none of which
+      // expose route-registration methods — so it is structurally
+      // incapable of calling `app.route()`/`.get()`/etc regardless of this
+      // exemption. Without this entry, the selector's blunt name-only match
+      // (it cannot see receiver types) also catches the unrelated, spec-
+      // mandated `upstream.headers.get(name)` read in the fidelity
+      // passthrough (design Part 1 §4) — a false positive, not a real gap
+      // in the registrar's exclusivity.
+      'packages/bff/src/http/proxy/forward.*',
     ],
     rules: {
       'no-restricted-syntax': [

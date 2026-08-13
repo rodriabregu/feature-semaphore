@@ -21,10 +21,18 @@ export interface ProxyRoute {
 }
 
 /**
- * B3a ships this EMPTY, deliberately. The security boundary (the table, the
- * registrar, the fail-closed gate, the ESLint rule) is proven against fixture
- * rows in `http/__tests__/test-bff.ts` before any real proxied route exists
- * (design Part 2 §10.1 slice note). B3b adds the first three real rows;
- * B4/B5 add the rest. Do not add real rows here in this slice.
+ * B3a shipped this EMPTY, deliberately, proving the security boundary (the
+ * table, the registrar, the fail-closed gate, the ESLint rule) against
+ * fixture rows before any real proxied route existed (design Part 2 §10.1
+ * slice note). B3b adds the first three real rows below — flags reads and
+ * the config mutation. `POST /flags` and `POST /flags/:key/archive` are
+ * deliberately absent (verified at
+ * `packages/server/src/infrastructure/http/routes/flags.routes.ts:28, 52`):
+ * `#1891` puts creation/archive UI out of scope, and absence means 404 —
+ * enforcement, not a comment (row 32).
  */
-export const PROXY_ROUTES = [] as const satisfies readonly ProxyRoute[];
+export const PROXY_ROUTES = [
+  { method: 'GET', path: '/flags', mutating: false },
+  { method: 'GET', path: '/flags/:key', mutating: false },
+  { method: 'PATCH', path: '/flags/:key/config/:env', mutating: true },
+] as const satisfies readonly ProxyRoute[];

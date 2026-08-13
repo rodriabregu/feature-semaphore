@@ -16,6 +16,7 @@ describe('registerProxyRoutes — the registered tree is exactly the supplied ro
       routes: FIXTURE_ROUTES,
       fetchFn: () => Promise.resolve(new Response(null, { status: 204 })),
       upstreamUrl: 'http://upstream.test',
+      adminApiKey: 'fs_admin_test-key',
     });
     await app.ready();
 
@@ -37,6 +38,7 @@ describe('registerProxyRoutes — the registered tree is exactly the supplied ro
       routes: [],
       fetchFn: () => Promise.resolve(new Response(null, { status: 204 })),
       upstreamUrl: 'http://upstream.test',
+      adminApiKey: 'fs_admin_test-key',
     });
     await app.ready();
 

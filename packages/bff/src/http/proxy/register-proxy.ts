@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sendBffProblem } from '../problem.js';
+import { forward } from './forward.js';
 import type { ProxyRoute } from './route-table.js';
 
 declare module 'fastify' {
@@ -17,6 +18,12 @@ export interface ProxyDeps {
   /** Injectable seam — mirrors `packages/sdk-node/src/http-transport.ts:14-15`. */
   readonly fetchFn: typeof fetch;
   readonly upstreamUrl: string;
+  /**
+   * Injected only into `forward()`'s outbound `Authorization` header — never
+   * read from an incoming request, never logged (design Part 1 §4's
+   * "ADMIN_API_KEY reaching the browser" threat row).
+   */
+  readonly adminApiKey: string;
 }
 
 /**
@@ -41,32 +48,30 @@ export function registerProxyRoutes(app: FastifyInstance, deps: ProxyDeps): void
     await sendBffProblem(reply, 'read_only', request.url);
   });
 
-  for (const route of deps.routes) {
-    app.route({
-      method: route.method,
-      url: route.path,
-      config: { mutating: route.mutating },
-      handler: (request, reply) => forwardToUpstream(deps, request, reply),
+  // Encapsulated so the raw-body parser below never reaches sibling scopes
+  // (e.g. `routes/session.routes.ts`'s JSON login body) — Fastify content
+  // type parsers are scoped per-plugin, unlike the `onRequest` hook above,
+  // which was added directly on `app` and therefore covers every route
+  // registered on it or any of its children (including this one).
+  void app.register((instance, _opts, done) => {
+    // Body fidelity is byte-for-byte in BOTH directions (design Part 1 §4):
+    // Fastify's default JSON parser would decode then re-serialise a
+    // mutating request body, risking key reordering and silently dropping a
+    // future `problem+json` extension. Capturing the raw buffer for every
+    // content type (including none) keeps `forward()` a pure passthrough.
+    instance.addContentTypeParser('*', { parseAs: 'buffer' }, (_request, payload, parserDone) => {
+      parserDone(null, payload);
     });
-  }
-}
 
-/**
- * Minimal forwarding for this slice's fixture rows only: no header
- * allow-lists, no raw-suffix path construction, no `If-Match` fidelity, no
- * 502 handling. Full fidelity (design Part 1 §4, Part 2 §10.3) arrives with
- * `forward.ts` in B3b, which will replace this call once real routes exist —
- * B3a's own rollback boundary names only `route-table.ts`/`register-proxy.ts`,
- * not `forward.ts`.
- */
-async function forwardToUpstream(
-  deps: ProxyDeps,
-  request: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
-  const response = await deps.fetchFn(`${deps.upstreamUrl}${request.url}`, {
-    method: request.method,
+    for (const route of deps.routes) {
+      instance.route({
+        method: route.method,
+        url: route.path,
+        config: { mutating: route.mutating },
+        handler: (request: FastifyRequest, reply: FastifyReply) => forward(deps, request, reply),
+      });
+    }
+
+    done();
   });
-  const body = await response.text();
-  reply.code(response.status).send(body);
 }
