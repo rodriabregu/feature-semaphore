@@ -5,6 +5,7 @@
  * `FlagWire`, `.../routes/exposures.routes.ts` for the exposures totals shape
  * — so a drift on either side becomes a type error here, not a silent bug.
  */
+import type { AttributeValue, EvaluationReason } from '@rodriab/feature-semaphore-core';
 
 export type Environment = 'development' | 'production';
 
@@ -49,4 +50,45 @@ export interface ExposuresTotalsResponse {
   readonly environment: Environment;
   readonly since: string;
   readonly flags: readonly { readonly flag_key: string; readonly total: number }[];
+}
+
+/**
+ * The optional overlay `POST /evaluate/preview` applies over the flag's
+ * saved config, letting an operator preview unsaved rule/rollout edits
+ * (design D6). Every field optional, mirroring the server's `candidateBody`
+ * schema (`packages/server/.../schemas/evaluate.ts`) exactly.
+ */
+export interface PreviewCandidateBody {
+  readonly enabled?: boolean;
+  readonly on_value?: boolean;
+  readonly off_value?: boolean;
+  readonly rollout_percentage?: number;
+  readonly rules?: readonly RuleWire[];
+  readonly overrides?: readonly { readonly unit_id: string; readonly serve: boolean }[];
+}
+
+/** `POST /evaluate/preview` request body — mirrors `previewBody` server-side. */
+export interface PreviewRequestBody {
+  readonly flag_key: string;
+  readonly environment: Environment;
+  readonly context: {
+    readonly unit_id: string;
+    readonly attributes: Readonly<Record<string, AttributeValue>>;
+    readonly default_value: boolean;
+  };
+  readonly candidate?: PreviewCandidateBody;
+}
+
+/**
+ * `POST /evaluate/preview` response shape. `reason` is the core's own
+ * `EvaluationReason` union — imported, never re-declared, so a new reason
+ * added to the evaluation kernel is a type error here rather than silently
+ * unhandled (design D6, ladder row 60).
+ */
+export interface PreviewResponse {
+  readonly value: boolean;
+  readonly reason: EvaluationReason;
+  readonly flag_key: string;
+  readonly environment: Environment;
+  readonly candidate_applied: boolean;
 }

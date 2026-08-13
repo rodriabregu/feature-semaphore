@@ -89,4 +89,33 @@ describe('App — production router wiring (D5b)', () => {
       ).toBe(true);
     });
   });
+
+  it('reaches PreviewPage via /preview through the real router (D6)', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        jsonResponse({
+          value: true,
+          reason: 'FLAG_OFF',
+          flag_key: 'app-wiring-preview',
+          environment: 'development',
+          candidate_applied: false,
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    navigateTo('/preview');
+
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Preview' });
+    await userEvent.type(screen.getByLabelText('Flag key'), 'app-wiring-preview');
+    await userEvent.type(screen.getByLabelText('Unit ID'), 'user-1');
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+
+    await screen.findByText('Reason: Flag disabled');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/evaluate/preview',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
 });
