@@ -5,7 +5,9 @@ import {
 } from '../../api/mutations/use-versioned-mutation.js';
 import { Button } from '../../components/atoms/Button.js';
 import { TextField } from '../../components/atoms/TextField.js';
+import { ConfirmDialog } from '../../components/molecules/ConfirmDialog.js';
 import type { Environment } from '../../api/types.js';
+import { confirmationFor } from './confirmation-for.js';
 
 export interface OverrideEditorProps {
   readonly flagKey: string;
@@ -41,6 +43,9 @@ function isValidDrafts(drafts: readonly OverrideDraft[]): boolean {
  * `overridesToWire`); the write shape is an array of `{unit_id, serve}`
  * (`replaceOverridesBody`) — converted at the submission boundary, never
  * stored in that shape locally.
+ *
+ * Save is gated by `confirmationFor` (D5b): production requires confirming a
+ * `ConfirmDialog` before the mutation fires; development submits immediately.
  */
 export function OverrideEditor({
   flagKey,
@@ -50,10 +55,18 @@ export function OverrideEditor({
   const [drafts, setDrafts] = useState<readonly OverrideDraft[]>(() =>
     Object.entries(overrides).map(([unitId, serve]) => ({ unitId, serve })),
   );
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const tier = confirmationFor(environment, 'overrides');
   const mutation = useVersionedMutation<OverridesBody>(
     { flagKey, environment },
     { method: 'PUT', path: overridesPath },
   );
+
+  const save = (): void => {
+    mutation.mutate({
+      overrides: drafts.map((draft) => ({ unit_id: draft.unitId, serve: draft.serve })),
+    });
+  };
 
   const updateDraft = (index: number, patch: Partial<OverrideDraft>): void => {
     setDrafts(drafts.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
@@ -102,14 +115,29 @@ export function OverrideEditor({
       <Button
         disabled={!isValidDrafts(drafts)}
         onClick={() => {
-          mutation.mutate({
-            overrides: drafts.map((draft) => ({ unit_id: draft.unitId, serve: draft.serve })),
-          });
+          if (tier === 'none') {
+            save();
+          } else {
+            setConfirmOpen(true);
+          }
         }}
       >
         Save overrides
       </Button>
       {mutation.isError ? <p role="alert">Failed to save overrides.</p> : null}
+      <ConfirmDialog
+        open={confirmOpen}
+        flagKey={flagKey}
+        environment={environment}
+        targetStateLabel={`${drafts.length} override(s)`}
+        onConfirm={() => {
+          save();
+          setConfirmOpen(false);
+        }}
+        onCancel={() => {
+          setConfirmOpen(false);
+        }}
+      />
     </section>
   );
 }

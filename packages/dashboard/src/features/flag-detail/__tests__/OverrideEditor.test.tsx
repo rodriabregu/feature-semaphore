@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { OverrideEditor } from '../OverrideEditor.js';
 import { queryKeys } from '../../../api/query-keys.js';
-import type { FlagWire } from '../../../api/types.js';
+import type { Environment, FlagWire } from '../../../api/types.js';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -13,16 +13,24 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-function seedFlagCache(queryClient: QueryClient, version: number): void {
+function seedFlagCache(
+  queryClient: QueryClient,
+  version: number,
+  environment: Environment = 'development',
+): void {
   queryClient.setQueryData<FlagWire>(queryKeys.flag('checkout-v2'), {
-    environments: { development: { version } },
-  } as FlagWire);
+    environments: { [environment]: { version } },
+  } as unknown as FlagWire);
 }
 
-function renderEditor(queryClient: QueryClient, overrides: Readonly<Record<string, boolean>>) {
+function renderEditor(
+  queryClient: QueryClient,
+  overrides: Readonly<Record<string, boolean>>,
+  environment: Environment = 'development',
+) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <OverrideEditor flagKey="checkout-v2" environment="development" overrides={overrides} />
+      <OverrideEditor flagKey="checkout-v2" environment={environment} overrides={overrides} />
     </QueryClientProvider>,
   );
 }
@@ -81,5 +89,30 @@ describe('OverrideEditor — per-unit overrides (design D5)', () => {
 
     await userEvent.type(screen.getByLabelText('Unit ID — override 2'), 'user-1');
     expect(screen.getByRole('button', { name: 'Save overrides' })).toBeDisabled();
+  });
+
+  it('gates Save behind a confirmation modal in production, never mutating until confirmed (D5b)', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({ version: 5 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedFlagCache(queryClient, 4, 'production');
+
+    renderEditor(queryClient, { 'user-1': true }, 'production');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save overrides' }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Flag: checkout-v2')).toBeInTheDocument();
+    expect(within(dialog).getByText('Environment: production')).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/flags/checkout-v2/config/production/overrides');
+    expect(init.method).toBe('PUT');
   });
 });

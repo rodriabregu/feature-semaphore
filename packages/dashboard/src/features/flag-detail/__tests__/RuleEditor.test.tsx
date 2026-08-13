@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RuleEditor } from '../RuleEditor.js';
 import { queryKeys } from '../../../api/query-keys.js';
-import type { FlagWire, RuleWire } from '../../../api/types.js';
+import type { Environment, FlagWire, RuleWire } from '../../../api/types.js';
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -21,16 +21,24 @@ function makeRules(): RuleWire[] {
 }
 
 /** Seeds only what `useVersionedMutation` reads: the cache entry's version. */
-function seedFlagCache(queryClient: QueryClient, version: number): void {
+function seedFlagCache(
+  queryClient: QueryClient,
+  version: number,
+  environment: Environment = 'development',
+): void {
   queryClient.setQueryData<FlagWire>(queryKeys.flag('checkout-v2'), {
-    environments: { development: { version } },
-  } as FlagWire);
+    environments: { [environment]: { version } },
+  } as unknown as FlagWire);
 }
 
-function renderEditor(queryClient: QueryClient, rules: RuleWire[]) {
+function renderEditor(
+  queryClient: QueryClient,
+  rules: RuleWire[],
+  environment: Environment = 'development',
+) {
   return render(
     <QueryClientProvider client={queryClient}>
-      <RuleEditor flagKey="checkout-v2" environment="development" rules={rules} />
+      <RuleEditor flagKey="checkout-v2" environment={environment} rules={rules} />
     </QueryClientProvider>,
   );
 }
@@ -107,5 +115,30 @@ describe('RuleEditor — ordered rule editor (row 59)', () => {
     await userEvent.clear(screen.getByLabelText('Values — rule 1'));
 
     expect(screen.getByRole('button', { name: 'Save rules' })).toBeDisabled();
+  });
+
+  it('gates Save behind a confirmation modal in production, never mutating until confirmed (D5b)', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(jsonResponse({ version: 8 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedFlagCache(queryClient, 7, 'production');
+
+    renderEditor(queryClient, makeRules(), 'production');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save rules' }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Flag: checkout-v2')).toBeInTheDocument();
+    expect(within(dialog).getByText('Environment: production')).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/flags/checkout-v2/config/production/rules');
+    expect(init.method).toBe('PUT');
   });
 });

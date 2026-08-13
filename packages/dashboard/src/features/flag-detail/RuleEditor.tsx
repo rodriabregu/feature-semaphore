@@ -5,7 +5,9 @@ import {
 } from '../../api/mutations/use-versioned-mutation.js';
 import { Button } from '../../components/atoms/Button.js';
 import { TextField } from '../../components/atoms/TextField.js';
+import { ConfirmDialog } from '../../components/molecules/ConfirmDialog.js';
 import type { Environment, RuleWire } from '../../api/types.js';
+import { confirmationFor } from './confirmation-for.js';
 import {
   RULE_OPERATORS,
   draftFromWire,
@@ -40,13 +42,22 @@ function moveIndex<T>(items: readonly T[], from: number, to: number): T[] {
  * terminal (evaluation never falls through to a later rule) — so reordering
  * is a semantic edit, not cosmetic. "Move up"/"Move down" buttons make
  * reordering explicit and keyboard-operable, deliberately not drag-only.
+ *
+ * Save is gated by `confirmationFor` (D5b): production requires confirming a
+ * `ConfirmDialog` before the mutation fires; development submits immediately.
  */
 export function RuleEditor({ flagKey, environment, rules }: RuleEditorProps): ReactElement {
   const [drafts, setDrafts] = useState<readonly RuleDraft[]>(() => rules.map(draftFromWire));
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const tier = confirmationFor(environment, 'rules');
   const mutation = useVersionedMutation<{ rules: RuleWire[] }>(
     { flagKey, environment },
     { method: 'PUT', path: rulesPath },
   );
+
+  const save = (): void => {
+    mutation.mutate({ rules: drafts.map(draftToWireRule) });
+  };
 
   const updateDraft = (index: number, patch: Partial<RuleDraft>): void => {
     setDrafts(drafts.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
@@ -149,12 +160,29 @@ export function RuleEditor({ flagKey, environment, rules }: RuleEditorProps): Re
       <Button
         disabled={!allValid}
         onClick={() => {
-          mutation.mutate({ rules: drafts.map(draftToWireRule) });
+          if (tier === 'none') {
+            save();
+          } else {
+            setConfirmOpen(true);
+          }
         }}
       >
         Save rules
       </Button>
       {mutation.isError ? <p role="alert">Failed to save rules.</p> : null}
+      <ConfirmDialog
+        open={confirmOpen}
+        flagKey={flagKey}
+        environment={environment}
+        targetStateLabel={`${drafts.length} rule(s)`}
+        onConfirm={() => {
+          save();
+          setConfirmOpen(false);
+        }}
+        onCancel={() => {
+          setConfirmOpen(false);
+        }}
+      />
     </section>
   );
 }
