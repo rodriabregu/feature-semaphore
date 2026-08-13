@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Clock } from '../../../ports/clock.js';
 import type { Delay } from '../../../ports/delay.js';
 import { buildTestBff } from '../../__tests__/test-bff.js';
-import type { ProxyRoute } from '../route-table.js';
+import { PROXY_ROUTES, type ProxyRoute } from '../route-table.js';
 
 const FAKE_CLOCK: Clock = { now: () => new Date('2026-01-01T00:00:00Z') };
 const FAKE_DELAY: Delay = { wait: () => Promise.resolve() };
@@ -113,5 +113,90 @@ describe('read-only gate — default mode allows a mutation with a fresh session
 
     expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(response.statusCode).toBe(200);
+  });
+});
+
+/**
+ * The load-bearing test of the whole gateway (design `#1905`, spec `#1894`
+ * X2): `mutating` is declared per route, never derived from the HTTP
+ * method. `POST /evaluate/preview` is a POST that writes nothing — verified
+ * at `packages/server/src/infrastructure/http/routes/evaluate.routes.ts:14-19`
+ * ("No `uow`, no `audit`, no `clock` — a pure read") — so a method-derived
+ * rule would incorrectly 403 it under `READ_ONLY_MODE`, breaking the exact
+ * screen that best demonstrates a read-only deployment. Audit and exposures
+ * reads forward for the same reason every other declared-read does.
+ */
+describe('read-only gate — POST /evaluate/preview forwards under READ_ONLY_MODE despite its method (row 44)', () => {
+  it('forwards preview, audit, and exposures reads while READ_ONLY_MODE=true', async () => {
+    // A fresh `Response` per call — `arrayBuffer()` can only drain a body
+    // once, and this test makes 4 real requests through the same `fetchFn`.
+    const fetchFn = vi
+      .fn()
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response('{"value":true,"reason":"FALLTHROUGH_ROLLOUT"}', { status: 200 }),
+        ),
+      );
+    const { app, mintSessionCookie } = buildTestBff({
+      fetchFn,
+      clock: FAKE_CLOCK,
+      delay: FAKE_DELAY,
+      readOnly: true,
+      routes: PROXY_ROUTES,
+    });
+    const cookie = mintSessionCookie();
+
+    const previewResponse = await app.inject({
+      method: 'POST',
+      url: '/api/evaluate/preview',
+      headers: { cookie },
+      payload: {
+        flag_key: 'demo',
+        environment: 'production',
+        context: { unit_id: 'user-1', default_value: false },
+      },
+    });
+    const auditResponse = await app.inject({
+      method: 'GET',
+      url: '/api/flags/demo/audit',
+      headers: { cookie },
+    });
+    const perFlagExposuresResponse = await app.inject({
+      method: 'GET',
+      url: '/api/flags/demo/exposures',
+      headers: { cookie },
+    });
+    const bulkExposuresResponse = await app.inject({
+      method: 'GET',
+      url: '/api/exposures',
+      headers: { cookie },
+    });
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(auditResponse.statusCode).toBe(200);
+    expect(perFlagExposuresResponse.statusCode).toBe(200);
+    expect(bulkExposuresResponse.statusCode).toBe(200);
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
+
+  it('still refuses a declared-mutating route under the same READ_ONLY_MODE, proving the mode is genuinely active', async () => {
+    const fetchFn = vi.fn();
+    const { app, mintSessionCookie } = buildTestBff({
+      fetchFn,
+      clock: FAKE_CLOCK,
+      delay: FAKE_DELAY,
+      readOnly: true,
+      routes: PROXY_ROUTES,
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: '/api/flags/demo/config/production',
+      headers: { cookie: mintSessionCookie(), 'if-match': '"1"' },
+      payload: { enabled: true },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });

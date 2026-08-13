@@ -39,4 +39,14 @@ export const PROXY_ROUTES = [
   // (row 43) — no new `forward.ts` logic, only these declarative rows.
   { method: 'PUT', path: '/flags/:key/config/:env/rules', mutating: true },
   { method: 'PUT', path: '/flags/:key/config/:env/overrides', mutating: true },
+  // B5: `POST /evaluate/preview` is `mutating: false` — the load-bearing
+  // classification of the whole gateway (design `#1905`, spec `#1894` X2).
+  // Verified at `.../routes/evaluate.routes.ts:14-19`: no `uow`, no `audit`,
+  // no `clock` — a pure read that happens to carry a request body. A
+  // method-derived rule would 403 this exact screen under `READ_ONLY_MODE`
+  // (row 44). Audit and both exposures routes are ordinary declared reads.
+  { method: 'POST', path: '/evaluate/preview', mutating: false },
+  { method: 'GET', path: '/flags/:key/audit', mutating: false },
+  { method: 'GET', path: '/flags/:key/exposures', mutating: false },
+  { method: 'GET', path: '/exposures', mutating: false },
 ] as const satisfies readonly ProxyRoute[];
