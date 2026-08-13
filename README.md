@@ -340,14 +340,16 @@ should mean for that one call site.
 
 ```
 packages/
-  core/      — pure domain: evaluate(), bucket(), matches(), rolloutThreshold()
-  server/    — application/ (ports, use cases), infrastructure/ (persistence, http), main/
-  sdk-node/  — @rodriab/feature-semaphore: local evaluation, ETag polling cache, fail-safe
+  core/       — pure domain: evaluate(), bucket(), matches(), rolloutThreshold()
+  server/     — application/ (ports, use cases), infrastructure/ (persistence, http), main/
+  sdk-node/   — @rodriab/feature-semaphore: local evaluation, ETag polling cache, fail-safe
+  bff/        — Fastify: password session, and the only process that holds the admin key
+  dashboard/  — React 19 + Vite 7 + TanStack Query, container/presentational
 ```
 
 `packages/core` has zero runtime dependencies and performs no IO. Every other package
-in the eventual system (`server`, `sdk-node`, `dashboard`, `e2e`) compiles against it
-without duplicating evaluation logic.
+in the eventual system (`server`, `sdk-node`, `bff`, `dashboard`, `e2e`) compiles against
+it without duplicating evaluation logic.
 
 `packages/server` is hexagonal: `application/` owns the ports and use cases and imports
 nothing from `infrastructure/`, which holds the three interchangeable persistence
@@ -358,19 +360,73 @@ shared contract suite, so they cannot drift apart.
 IO adapters (`fetch`, `setInterval`) each take their global as an injected, test-overridable
 parameter — the only two modules in the package that name them at all.
 
+`packages/bff` is deliberately **not** hexagonal. The server's four layers earn their keep
+because one `FlagRepository` port has three interchangeable adapters; the BFF has one
+upstream and one session store, so the same structure would be ceremony. Its upstream seam
+is an injected `fetchFn`, matching what `packages/sdk-node` already chose.
+
+`packages/dashboard` never fetches from a presentational component — containers own every
+query. All four mutating screens go through one shared hook, `useVersionedMutation`, which
+reads the `version` for `If-Match` from the query cache at mutation time rather than from
+props captured at render.
+
+## The dashboard and its BFF
+
+The dashboard is a browser SPA, so it can never hold an admin key: a `fs_admin_` token is
+full write access to every flag in both environments, and there is no revocation path short
+of redeploying. A BFF sits between them and holds that key server-side. The browser gets an
+`httpOnly` session cookie and nothing else — a test runs a real `vite build` and greps the
+shipped bundle to prove it.
+
+```
+browser --cookie httpOnly--> packages/bff --Bearer fs_admin_--> packages/server
+```
+
+Same-origin by construction, which dissolves CORS rather than configuring it.
+
+| Variable             | Default    | Notes                                                                                                                        |
+| -------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `UPSTREAM_URL`       | _required_ | The management API's base URL. Never defaults — a silent localhost fallback is how a demo writes to production               |
+| `ADMIN_API_KEY`      | _required_ | Same key the management API expects. Never leaves this process                                                               |
+| `DASHBOARD_PASSWORD` | _required_ | What an operator types to log in. Separate from the admin key by design                                                      |
+| `READ_ONLY_MODE`     | `false`    | Exactly the string `true` enables it. Rejects every route declared mutating with `403` before the request reaches the server |
+| `COOKIE_SECURE`      | `true`     | Exactly the string `false` disables it, so a typo cannot silently ship an insecure cookie                                    |
+
+`READ_ONLY_MODE` classifies routes by an explicit per-route declaration, **never by HTTP
+method** — `POST /evaluate/preview` writes nothing and stays reachable. A route that forgets
+to declare itself fails closed as mutating, and omitting the field is a compile error.
+
+Failed logins escalate a delay (250ms, 500ms, 1s, capped at 2s) that resets on success. There
+is deliberately no lockout: with exactly one legitimate credential, a mechanism that _denies_
+hands an attacker a way to lock out the only operator. A 2s cap still bounds guessing to
+roughly 1,800 attempts an hour, which is nothing against a high-entropy secret.
+
+Two things to know before deploying it, both documented in `packages/bff/README.md`:
+the session store is an in-memory `Map`, so the BFF is **single-instance** — two replicas log
+operators out at random. And there is no dev-proxy or static-serving path yet, so the
+dashboard needs an external reverse proxy to sit same-origin with the BFF.
+
 ## Scripts
 
-| Script                    | What it does                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------ |
-| `pnpm test`               | Run the test suite (`vitest run`)                                                    |
-| `pnpm test:coverage`      | Run tests with the coverage gate                                                     |
-| `pnpm lint`               | ESLint over the whole workspace                                                      |
-| `pnpm format:check`       | Prettier check                                                                       |
-| `pnpm typecheck`          | `tsc -b` across the solution (src and tests)                                         |
-| `pnpm build`              | Compile `packages/core`, `packages/server` and `packages/sdk-node` to their `dist/`  |
-| `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture |
-| `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                       |
+| Script                    | What it does                                                                                    |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `pnpm test`               | Run the test suite (`vitest run`)                                                               |
+| `pnpm test:coverage`      | Run tests with the coverage gate                                                                |
+| `pnpm lint`               | ESLint over the whole workspace                                                                 |
+| `pnpm format:check`       | Prettier check                                                                                  |
+| `pnpm typecheck`          | `tsc -b` across the solution (src and tests)                                                    |
+| `pnpm build`              | Compile `core`, `server`, `sdk-node` and `bff` with `tsc -b`, then bundle `dashboard` with Vite |
+| `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture            |
+| `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                                  |
 
 `pnpm test` skips the Postgres legs of the persistence and ETag-parity contract suites unless
-`DATABASE_URL` is set — 24 tests, reported as skipped rather than silently absent. Set it to run
-all of them: `DATABASE_URL=postgres://localhost:5432/postgres pnpm test`.
+`DATABASE_URL` is set — 28 tests, reported as skipped rather than silently absent:
+
+```bash
+pnpm test                                                     # 570 passed | 28 skipped
+DATABASE_URL=postgres://localhost:5432/postgres pnpm test     # 598 passed | 0 skipped
+```
+
+Coverage thresholds are declared per package in the root `vitest.config.ts` and nowhere else —
+Vitest silently ignores a `coverage` block inside a project config under a `projects` topology,
+so a per-package threshold would be a green gate enforcing nothing.
