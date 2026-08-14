@@ -72,19 +72,19 @@ curl -b cookies.txt localhost:4000/api/flags   # proxied, admin key injected ser
 
 ## Configuration
 
-| Variable                 | Default    | Notes                                                                                                                                    |
-| ------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `UPSTREAM_URL`           | _required_ | The management API's base URL. No default — a silent fallback would be how a demo writes to production                                  |
-| `ADMIN_API_KEY`          | _required_ | Forwarded as `Authorization: Bearer` on every proxied request. Never reaches the browser                                                |
-| `DASHBOARD_PASSWORD`     | _required_ | The one login credential, system-wide. No user accounts                                                                                 |
-| `DASHBOARD_DIST_DIR`     | _required_ | Absolute path to the built dashboard bundle (`packages/dashboard/dist`). No default — a wrong guess would silently serve nothing         |
-| `COOKIE_SECURE`          | secure     | Only the exact string `'false'` disables `Secure`. Every other value, including unset, keeps it                                          |
-| `READ_ONLY_MODE`         | `false`    | Only the exact string `'true'` enables it. Every other value, including unset, allows mutations — see "The public-deployment boot gate" |
-| `ALLOW_WRITES_ON_PUBLIC` | `false`    | Only the exact string `'true'` bypasses the public-deployment boot gate below. A deliberate, named, greppable escape hatch, not a silent one |
+| Variable                 | Default    | Notes                                                                                                                                                   |
+| ------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UPSTREAM_URL`           | _required_ | The management API's base URL. No default — a silent fallback would be how a demo writes to production                                                  |
+| `ADMIN_API_KEY`          | _required_ | Forwarded as `Authorization: Bearer` on every proxied request. Never reaches the browser                                                                |
+| `DASHBOARD_PASSWORD`     | _required_ | The one login credential, system-wide. No user accounts                                                                                                 |
+| `DASHBOARD_DIST_DIR`     | _required_ | Absolute path to the built dashboard bundle (`packages/dashboard/dist`). No default — a wrong guess would silently serve nothing                        |
+| `COOKIE_SECURE`          | secure     | Only the exact string `'false'` disables `Secure`. Every other value, including unset, keeps it                                                         |
+| `READ_ONLY_MODE`         | `false`    | Only the exact string `'true'` enables it. Every other value, including unset, allows mutations — see "The public-deployment boot gate"                 |
+| `ALLOW_WRITES_ON_PUBLIC` | `false`    | Only the exact string `'true'` bypasses the public-deployment boot gate below. A deliberate, named, greppable escape hatch, not a silent one            |
 | `PUBLIC_DEMO`            | `false`    | Only the exact string `'true'` marks this a public deployment, ORed with the platform-set `FLY_APP_NAME`. Lets the boot gate be tested and used off-Fly |
-| `PORT`                   | `3000`     |                                                                                                                                          |
-| `HOST`                   | `0.0.0.0`  |                                                                                                                                          |
-| `LOG_LEVEL`              | `info`     | Passed straight to pino. Each package's own `vitest.config.ts` sets this to `silent` so the test suite stays quiet                       |
+| `PORT`                   | `3000`     |                                                                                                                                                         |
+| `HOST`                   | `0.0.0.0`  |                                                                                                                                                         |
+| `LOG_LEVEL`              | `info`     | Passed straight to pino. Each package's own `vitest.config.ts` sets this to `silent` so the test suite stays quiet                                      |
 
 `COOKIE_SECURE` and `READ_ONLY_MODE` default in opposite string directions on
 purpose — each variable defaults to whichever value is _safe_ for that

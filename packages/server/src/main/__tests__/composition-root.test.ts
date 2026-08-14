@@ -101,7 +101,9 @@ describe('composition root', () => {
         method: 'POST',
         url: '/api/v1/sdk/events',
         headers: { authorization: `Bearer ${rawDevKey}`, 'content-type': 'application/json' },
-        payload: { exposures: [{ flagKey: 'checkout-v2', value: true, reason: 'FLAG_OFF', count }] },
+        payload: {
+          exposures: [{ flagKey: 'checkout-v2', value: true, reason: 'FLAG_OFF', count }],
+        },
       });
 
     function readCounter(body: string): number | undefined {

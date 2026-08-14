@@ -25,7 +25,7 @@ export interface CompositionConfig {
 export class PublicDeploymentRequiresReadOnlyError extends Error {
   constructor() {
     super(
-      "This looks like a public deployment (FLY_APP_NAME or PUBLIC_DEMO=true is set), " +
+      'This looks like a public deployment (FLY_APP_NAME or PUBLIC_DEMO=true is set), ' +
         "but READ_ONLY_MODE is not 'true'. Either set READ_ONLY_MODE=true, or set " +
         'ALLOW_WRITES_ON_PUBLIC=true to accept a writable public deployment.',
     );
@@ -50,9 +50,7 @@ function isPublicDeployment(env: NodeJS.ProcessEnv | Record<string, string | und
  * who deploys to Fly on purpose accept a writable public deployment instead
  * of being permanently blocked by their own platform.
  */
-function allowWritesOnPublic(
-  env: NodeJS.ProcessEnv | Record<string, string | undefined>,
-): boolean {
+function allowWritesOnPublic(env: NodeJS.ProcessEnv | Record<string, string | undefined>): boolean {
   return env.ALLOW_WRITES_ON_PUBLIC === 'true';
 }
 

@@ -30,7 +30,9 @@ describe('formatMetrics', () => {
       },
     ]);
 
-    expect(text).toContain('# HELP feature_semaphore_flag_exposures_total Cumulative count of flag evaluations.');
+    expect(text).toContain(
+      '# HELP feature_semaphore_flag_exposures_total Cumulative count of flag evaluations.',
+    );
     expect(text).toContain('# TYPE feature_semaphore_flag_exposures_total counter');
     expect(text).toContain(
       'feature_semaphore_flag_exposures_total{flag="check\\"out",environment="development"} 3',
