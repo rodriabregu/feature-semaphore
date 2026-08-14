@@ -4,10 +4,11 @@ import type { ProxyDeps } from './register-proxy.js';
 
 /**
  * Fidelity is authoritative here (design Part 1 §4, Part 2 §10.3): exactly
- * two request headers pass through (plus the injected `Authorization`),
- * exactly two response headers pass through, and the body travels
- * byte-for-byte in both directions. `If-Match` is never synthesised — absent
- * means absent, and the upstream's own 428 reaches the browser unmodified.
+ * two request headers pass through (plus the injected `Authorization` and
+ * `x-request-id`), exactly two response headers pass through, and the body
+ * travels byte-for-byte in both directions. `If-Match` is never synthesised
+ * — absent means absent, and the upstream's own 428 reaches the browser
+ * unmodified.
  */
 const REQUEST_HEADER_ALLOW = ['if-match', 'content-type'] as const;
 const RESPONSE_HEADER_ALLOW = ['etag', 'content-type'] as const;
@@ -28,7 +29,14 @@ export async function forward(
   // fixed pattern, so the matched route IS the validation (row 39).
   const url = `${deps.upstreamUrl}/api/v1${request.url.slice('/api'.length)}`;
 
-  const headers: Record<string, string> = { authorization: `Bearer ${deps.adminApiKey}` };
+  // Injection, not allow-list widening (design D4, `#1979`): a client-forged
+  // `x-request-id` is never trusted — `REQUEST_HEADER_ALLOW` below stays at
+  // exactly two entries, so a client-supplied value is dropped like any
+  // other unlisted header, and the BFF's own generated id goes out instead.
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${deps.adminApiKey}`,
+    'x-request-id': request.id,
+  };
   for (const name of REQUEST_HEADER_ALLOW) {
     const value = request.headers[name];
     if (typeof value === 'string') headers[name] = value; // If-Match VERBATIM, never synthesised

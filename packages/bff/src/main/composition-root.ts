@@ -9,6 +9,7 @@ import { createMemorySessionStore } from '../session/session-store.js';
 import { sessionGuardPlugin } from '../http/plugins/session-guard.js';
 import { registerProxyRoutes } from '../http/proxy/register-proxy.js';
 import { PROXY_ROUTES } from '../http/proxy/route-table.js';
+import { createBffLogger, type BffLoggerOverrides } from './logger.js';
 
 export type { CompositionConfig } from './env.js';
 
@@ -43,8 +44,9 @@ export interface Composition {
 export async function buildApp(
   config: CompositionConfig,
   fetchFn: typeof fetch = fetch,
+  loggerOverrides: BffLoggerOverrides = {},
 ): Promise<Composition> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: createBffLogger(loggerOverrides) });
   await app.register(fastifyCookie);
 
   const clock = createSystemClock();

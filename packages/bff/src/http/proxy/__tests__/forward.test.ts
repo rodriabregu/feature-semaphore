@@ -52,7 +52,7 @@ describe('forward — absent routes 404 in both read-only modes, fetchFn never c
 });
 
 describe('forward — outbound header allow-list (row 33)', () => {
-  it('forwards exactly authorization + if-match + content-type, dropping cookie/own authorization/x-forwarded-for/user-agent', async () => {
+  it('forwards exactly authorization + if-match + content-type + x-request-id, dropping cookie/own authorization/x-forwarded-for/user-agent', async () => {
     let capturedHeaders: Record<string, string> | undefined;
     const fetchFn = vi.fn((_url: string, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>;
@@ -81,11 +81,43 @@ describe('forward — outbound header allow-list (row 33)', () => {
     });
 
     expect(response.statusCode).toBe(200);
+    const anyString = expect.any(String) as unknown as string;
     expect(capturedHeaders).toEqual({
       authorization: `Bearer ${TEST_ADMIN_API_KEY}`,
       'if-match': '"5"',
       'content-type': 'application/json',
+      'x-request-id': anyString,
     });
+  });
+
+  it('injects its own x-request-id (design D4) — a client-supplied value is ignored, never propagated', async () => {
+    let capturedHeaders: Record<string, string> | undefined;
+    const fetchFn = vi.fn((_url: string, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>;
+      return Promise.resolve(new Response('{"version":2}', { status: 200 }));
+    });
+    const { app, mintSessionCookie } = buildTestBff({
+      fetchFn: fetchFn as unknown as typeof fetch,
+      clock: FAKE_CLOCK,
+      delay: FAKE_DELAY,
+      readOnly: false,
+      routes: FLAGS_ROUTES,
+    });
+
+    await app.inject({
+      method: 'PATCH',
+      url: '/api/flags/demo/config/production',
+      headers: {
+        cookie: mintSessionCookie(),
+        'if-match': '"5"',
+        'content-type': 'application/json',
+        'x-request-id': 'client-forged-request-id',
+      },
+      payload: { enabled: true },
+    });
+
+    expect(capturedHeaders?.['x-request-id']).toBeTruthy();
+    expect(capturedHeaders?.['x-request-id']).not.toBe('client-forged-request-id');
   });
 });
 

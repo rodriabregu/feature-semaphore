@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import type { Environment } from '@rodriab/feature-semaphore-core';
 import type { AuditLog } from '../application/ports/audit-log.js';
@@ -8,6 +9,10 @@ import type { FlagRepository } from '../application/ports/flag-repository.js';
 import type { UnitOfWork } from '../application/ports/unit-of-work.js';
 import { createSystemClock } from '../infrastructure/clock/system-clock.js';
 import { registerErrorHandler } from '../infrastructure/http/error-handler.js';
+import {
+  createServerLogger,
+  type ServerLoggerOverrides,
+} from '../infrastructure/logging/logger.js';
 import { authPlugin } from '../infrastructure/http/plugins/auth.js';
 import { sdkAuthPlugin } from '../infrastructure/http/plugins/sdk-auth.js';
 import { registerConfigRoutes } from '../infrastructure/http/routes/config.routes.js';
@@ -193,8 +198,18 @@ async function buildAdapters(config: CompositionConfig, clock: Clock): Promise<A
 export async function buildApp(
   config: CompositionConfig,
   clock: Clock = createSystemClock(),
+  loggerOverrides: ServerLoggerOverrides = {},
 ): Promise<Composition> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: createServerLogger(loggerOverrides),
+    // Adopts the BFF's own request id (injected at `forward.ts:31`) so both
+    // processes' logs correlate for the same browser request (design D4);
+    // falls back to a fresh id for any request that arrives without one.
+    genReqId: (req) => {
+      const inbound = req.headers['x-request-id'];
+      return typeof inbound === 'string' ? inbound : randomUUID();
+    },
+  });
   registerErrorHandler(app);
 
   let isReady = false;
