@@ -87,6 +87,67 @@ describe('composition root', () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it('GET /metrics is a cumulative counter that only grows across two scrapes with an intervening exposure batch (S2)', async () => {
+    const rawDevKey = `fs_server_${'d'.repeat(43)}`;
+    const { app, start } = await buildApp({
+      databaseDriver: 'memory',
+      adminApiKey: `fs_admin_${'a'.repeat(43)}`,
+      serverApiKeys: { development: rawDevKey, production: undefined },
+    });
+    await start();
+
+    const recordExposure = (count: number): Promise<{ statusCode: number }> =>
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/sdk/events',
+        headers: { authorization: `Bearer ${rawDevKey}`, 'content-type': 'application/json' },
+        payload: { exposures: [{ flagKey: 'checkout-v2', value: true, reason: 'FLAG_OFF', count }] },
+      });
+
+    function readCounter(body: string): number | undefined {
+      const line = body
+        .split('\n')
+        .find((candidate) =>
+          candidate.startsWith(
+            'feature_semaphore_flag_exposures_total{flag="checkout-v2",environment="development"}',
+          ),
+        );
+      return line ? Number(line.split(' ').at(-1)) : undefined;
+    }
+
+    await recordExposure(3);
+    // No `authorization` header at all — proves reachability requires no
+    // credential (design D6: unauthenticated by placement, like `/healthz`).
+    const firstScrape = await app.inject({ method: 'GET', url: '/metrics' });
+    expect(firstScrape.statusCode).toBe(200);
+    expect(firstScrape.body).toContain('# TYPE feature_semaphore_flag_exposures_total counter');
+    expect(readCounter(firstScrape.body)).toBe(3);
+
+    await recordExposure(2);
+    const secondScrape = await app.inject({ method: 'GET', url: '/metrics' });
+    expect(readCounter(secondScrape.body)).toBe(5);
+  });
+
+  it('GET /metrics exposes the ruleset-age gauge for an existing flag (S2)', async () => {
+    const adminKey = `fs_admin_${'a'.repeat(43)}`;
+    const { app, start } = await buildApp({ databaseDriver: 'memory', adminApiKey: adminKey });
+    await start();
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/flags',
+      headers: { authorization: `Bearer ${adminKey}`, 'content-type': 'application/json' },
+      payload: { key: 'checkout-v2', name: 'Checkout v2', description: '' },
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/metrics' });
+
+    expect(response.body).toContain('# TYPE feature_semaphore_ruleset_age_seconds gauge');
+    expect(response.body).toMatch(
+      /feature_semaphore_ruleset_age_seconds\{flag="checkout-v2",environment="development"\} \d/,
+    );
+  });
+
   it('row 39: a malformed SERVER_API_KEY_PRODUCTION fails startup with a named error, never logged', async () => {
     const rawMalformed = 'not-a-real-shape';
     const { start } = await buildApp({

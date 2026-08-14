@@ -32,8 +32,10 @@ export interface BuildTestBffOptions {
   /**
    * A writable sink for the app's logger — e.g. to assert an upstream
    * failure was logged, not silently swallowed (row 40). Mirrors
-   * `packages/server/.../test-app.ts:60`. Defaults to a fully disabled
-   * logger (matches the composition root's own `logger: false`).
+   * `packages/server/.../test-app.ts:60`. Defaults to a disabled logger
+   * DELIBERATELY: the composition root now logs for real (S1), so a test
+   * that does not assert on log output should stay quiet rather than
+   * mirror production's logger.
    */
   readonly logStream?: { write(chunk: string): boolean };
 }

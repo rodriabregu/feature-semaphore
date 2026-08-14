@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply } from 'fastify';
 import type { Environment } from '@rodriab/feature-semaphore-core';
 import type { AuditLog } from '../application/ports/audit-log.js';
@@ -8,12 +9,18 @@ import type { FlagRepository } from '../application/ports/flag-repository.js';
 import type { UnitOfWork } from '../application/ports/unit-of-work.js';
 import { createSystemClock } from '../infrastructure/clock/system-clock.js';
 import { registerErrorHandler } from '../infrastructure/http/error-handler.js';
+import {
+  createServerLogger,
+  type ServerLoggerOverrides,
+} from '../infrastructure/logging/logger.js';
 import { authPlugin } from '../infrastructure/http/plugins/auth.js';
 import { sdkAuthPlugin } from '../infrastructure/http/plugins/sdk-auth.js';
+import { createHistogram } from '../infrastructure/http/metrics/histogram.js';
 import { registerConfigRoutes } from '../infrastructure/http/routes/config.routes.js';
 import { registerEvaluateRoutes } from '../infrastructure/http/routes/evaluate.routes.js';
 import { registerExposuresRoutes } from '../infrastructure/http/routes/exposures.routes.js';
 import { registerFlagsRoutes } from '../infrastructure/http/routes/flags.routes.js';
+import { registerMetricsRoutes } from '../infrastructure/http/routes/metrics.routes.js';
 import { registerOverridesRoutes } from '../infrastructure/http/routes/overrides.routes.js';
 import { registerRulesRoutes } from '../infrastructure/http/routes/rules.routes.js';
 import { registerSdkRoutes } from '../infrastructure/http/routes/sdk.routes.js';
@@ -29,6 +36,7 @@ import {
 } from '../infrastructure/persistence/migrations/index.js';
 import { migrate } from '../infrastructure/persistence/migrations/runner.js';
 import { seedAdminKey } from '../infrastructure/persistence/seed/admin-key.js';
+import { seedDemoFlag } from '../infrastructure/persistence/seed/demo-flag.js';
 import { seedServerKeys } from '../infrastructure/persistence/seed/server-key.js';
 
 export type DatabaseDriver = 'memory' | 'sqlite' | 'postgres';
@@ -83,9 +91,10 @@ function buildMemoryAdapters(clock: Clock): Adapters {
   const db = new MemoryDatabase();
   const store = { get: () => db.current };
   const keys = createMemoryApiKeyRepository(store);
+  const repo = createMemoryFlagRepository(store, clock);
 
   return {
-    repo: createMemoryFlagRepository(store, clock),
+    repo,
     keys,
     audit: createMemoryAuditLog(store),
     uow: createMemoryUnitOfWork(db, clock),
@@ -94,6 +103,7 @@ function buildMemoryAdapters(clock: Clock): Adapters {
     migrateAndSeed: async (adminApiKey, serverApiKeys) => {
       await seedAdminKey(keys, adminApiKey, clock);
       await seedServerKeys(keys, serverApiKeys, clock);
+      await seedDemoFlag(repo, clock);
     },
   };
 }
@@ -114,9 +124,10 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
 
   const db = openSqliteDatabase(sqliteFile);
   const keys = createSqliteApiKeyRepository(db);
+  const repo = createSqliteFlagRepository(db, clock);
 
   return {
-    repo: createSqliteFlagRepository(db, clock),
+    repo,
     keys,
     audit: createSqliteAuditLog(db),
     uow: createSqliteUnitOfWork(db, clock),
@@ -125,6 +136,7 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
       await migrate(createSqliteMigrationConnection(db), SQLITE_MIGRATIONS, () => clock.now());
       await seedAdminKey(keys, adminApiKey, clock);
       await seedServerKeys(keys, serverApiKeys, clock);
+      await seedDemoFlag(repo, clock);
     },
   };
 }
@@ -147,9 +159,10 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
 
   const pool = new Pool({ connectionString: databaseUrl });
   const keys = createPostgresApiKeyRepository(pool);
+  const repo = createPostgresFlagRepository(pool, clock);
 
   return {
-    repo: createPostgresFlagRepository(pool, clock),
+    repo,
     keys,
     audit: createPostgresAuditLog(pool),
     uow: createPostgresUnitOfWork(pool, clock),
@@ -163,6 +176,7 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
         );
         await seedAdminKey(keys, adminApiKey, clock);
         await seedServerKeys(keys, serverApiKeys, clock);
+        await seedDemoFlag(repo, clock);
       } finally {
         await lockClient.end();
       }
@@ -193,8 +207,18 @@ async function buildAdapters(config: CompositionConfig, clock: Clock): Promise<A
 export async function buildApp(
   config: CompositionConfig,
   clock: Clock = createSystemClock(),
+  loggerOverrides: ServerLoggerOverrides = {},
 ): Promise<Composition> {
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: createServerLogger(loggerOverrides),
+    // Adopts the BFF's own request id (injected at `forward.ts:31`) so both
+    // processes' logs correlate for the same browser request (design D4);
+    // falls back to a fresh id for any request that arrives without one.
+    genReqId: (req) => {
+      const inbound = req.headers['x-request-id'];
+      return typeof inbound === 'string' ? inbound : randomUUID();
+    },
+  });
   registerErrorHandler(app);
 
   let isReady = false;
@@ -210,6 +234,24 @@ export async function buildApp(
   });
 
   const adapters = await buildAdapters(config, clock);
+
+  const definitionsLatencyHistogram = createHistogram([
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+  ]);
+
+  // Root scope — a SIBLING of `/healthz`/`/readyz`, registered before the
+  // `/api/v1` scope below and therefore outside its `authPlugin` (design D6):
+  // `/metrics` is unauthenticated by placement, exactly like `/healthz`. Two
+  // absences carry the reachability guarantee, neither of them an auth
+  // check: the server has no public IP (Fly private network only), and
+  // `packages/bff/src/http/proxy/route-table.ts` has no `/metrics` row, so no
+  // dashboard session can reach it either.
+  registerMetricsRoutes(app, {
+    repo: adapters.repo,
+    exposures: adapters.exposures,
+    clock,
+    histogram: definitionsLatencyHistogram,
+  });
 
   await app.register(
     (instance, _opts, done) => {
@@ -236,7 +278,12 @@ export async function buildApp(
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys: adapters.keys, clock });
-      registerSdkRoutes(instance, { repo: adapters.repo, exposures: adapters.exposures, clock });
+      registerSdkRoutes(instance, {
+        repo: adapters.repo,
+        exposures: adapters.exposures,
+        clock,
+        histogram: definitionsLatencyHistogram,
+      });
       done();
     },
     { prefix: '/api/v1/sdk' },

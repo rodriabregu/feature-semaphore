@@ -9,6 +9,7 @@ import { createMemoryExposureRepository } from '../../persistence/memory/exposur
 import { createMemoryFlagRepository } from '../../persistence/memory/flag-repository.memory.js';
 import { MemoryDatabase } from '../../persistence/memory/store.js';
 import { createMemoryUnitOfWork } from '../../persistence/memory/unit-of-work.memory.js';
+import { createHistogram } from '../metrics/histogram.js';
 import { registerErrorHandler } from '../error-handler.js';
 import { authPlugin } from '../plugins/auth.js';
 import { sdkAuthPlugin } from '../plugins/sdk-auth.js';
@@ -53,9 +54,11 @@ export interface BuildTestAppOptions {
 
   /**
    * A writable sink for the app's logger — e.g. to assert a persistence
-   * failure was logged, not silently swallowed. Defaults to a fully
-   * disabled logger (matches the composition root's own `logger: false`).
-   * Typed to pino's minimal destination shape, not the full `NodeJS.WritableStream`.
+   * failure was logged, not silently swallowed. Defaults to a disabled
+   * logger DELIBERATELY: the composition root now logs for real (S1), so a
+   * test that does not assert on log output should stay quiet rather than
+   * mirror production's logger. Typed to pino's minimal destination shape,
+   * not the full `NodeJS.WritableStream`.
    */
   readonly logStream?: { write(chunk: string): boolean };
 }
@@ -116,7 +119,12 @@ export async function buildTestApp(options: BuildTestAppOptions = {}): Promise<T
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys, clock });
-      registerSdkRoutes(instance, { repo, exposures, clock });
+      registerSdkRoutes(instance, {
+        repo,
+        exposures,
+        clock,
+        histogram: createHistogram([0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]),
+      });
       done();
     },
     { prefix: '/api/v1/sdk' },

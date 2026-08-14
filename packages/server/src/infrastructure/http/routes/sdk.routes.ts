@@ -6,6 +6,7 @@ import type { ExposureRepository } from '../../../application/ports/exposure-rep
 import type { FlagRepository } from '../../../application/ports/flag-repository.js';
 import { canonicalString, definitionsEtag, sortDefinitions } from '../etag/definitions-etag.js';
 import { parseIfNoneMatch } from '../preconditions.js';
+import type { Histogram } from '../metrics/histogram.js';
 import type { SdkAuthContext } from '../plugins/sdk-auth.js';
 import { eventsBody, type SdkDefinitionsResponse } from '../schemas/sdk.js';
 
@@ -13,6 +14,7 @@ export interface SdkRoutesDeps {
   readonly repo: FlagRepository;
   readonly exposures: ExposureRepository;
   readonly clock: Clock;
+  readonly histogram: Histogram;
 }
 
 /**
@@ -29,27 +31,37 @@ function requireSdkAuth(request: FastifyRequest): SdkAuthContext {
 }
 
 export function registerSdkRoutes(app: FastifyInstance, deps: SdkRoutesDeps): void {
-  app.get('/definitions', async (request: FastifyRequest, reply: FastifyReply) => {
-    const { environment } = requireSdkAuth(request);
-    const definitions = await listDefinitions(deps.repo, environment);
-    const sorted = sortDefinitions(definitions);
-    const etag = definitionsEtag(canonicalString(sorted, environment));
-    const etagValue = etag.slice(1, -1); // unquoted, to compare against parseIfNoneMatch's output
+  app.get(
+    '/definitions',
+    {
+      // Route-scoped, not `app.addHook` on the whole scope — this hook must
+      // feed the latency histogram for `/definitions` only, never `/events`.
+      onResponse: async (_request: FastifyRequest, reply: FastifyReply) => {
+        deps.histogram.observe(reply.elapsedTime / 1000);
+      },
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { environment } = requireSdkAuth(request);
+      const definitions = await listDefinitions(deps.repo, environment);
+      const sorted = sortDefinitions(definitions);
+      const etag = definitionsEtag(canonicalString(sorted, environment));
+      const etagValue = etag.slice(1, -1); // unquoted, to compare against parseIfNoneMatch's output
 
-    reply
-      .header('Cache-Control', 'private, no-cache')
-      .header('Vary', 'Authorization')
-      .header('ETag', etag);
+      reply
+        .header('Cache-Control', 'private, no-cache')
+        .header('Vary', 'Authorization')
+        .header('ETag', etag);
 
-    const ifNoneMatch = parseIfNoneMatch(request.headers['if-none-match']);
-    if (ifNoneMatch.includes('*') || ifNoneMatch.includes(etagValue)) {
-      reply.code(304).send();
-      return;
-    }
+      const ifNoneMatch = parseIfNoneMatch(request.headers['if-none-match']);
+      if (ifNoneMatch.includes('*') || ifNoneMatch.includes(etagValue)) {
+        reply.code(304).send();
+        return;
+      }
 
-    const body: SdkDefinitionsResponse = { environment, definitions: sorted };
-    reply.send(body);
-  });
+      const body: SdkDefinitionsResponse = { environment, definitions: sorted };
+      reply.send(body);
+    },
+  );
 
   /**
    * Fire-and-forget from the caller's perspective: ALWAYS 202, even when

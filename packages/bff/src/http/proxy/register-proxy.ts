@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sendBffProblem } from '../problem.js';
 import { forward } from './forward.js';
+import { registerApiNotFound } from './api-not-found.js';
 import type { ProxyRoute } from './route-table.js';
 
 declare module 'fastify' {
@@ -34,12 +35,25 @@ export interface ProxyDeps {
  * Fastify 404 by construction, never a runtime check.
  */
 export function registerProxyRoutes(app: FastifyInstance, deps: ProxyDeps): void {
+  // Scoped 404 (design D1) — the one call site both `buildApp` and
+  // `http/__tests__/test-bff.ts` share, so an unregistered `/api/*` path
+  // returns `application/problem+json`, never Fastify's default JSON 404.
+  registerApiNotFound(app);
+
   // `onRequest` — runs BEFORE Fastify parses the body, so a read-only 403 on
   // a large mutating payload never allocates it (design D3 §4). Registered on
   // this instance directly, so it also covers any route registered on it
   // afterward, including a malformed fixture row a test adds by hand.
   app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
     if (!deps.readOnly) return;
+    // Pre-authorised fix (design D3 §12, T3.3): an unmatched path can never
+    // reach `forward()` regardless of this hook — `registerApiNotFound`'s
+    // scoped handler always answers it with 404 — so it can neither mutate
+    // nor leak. `request.is404` is Fastify's own discriminator for "this
+    // request never matched a route" (`config.url === undefined`), which is
+    // NOT the same case as `mutating === undefined` below: a row that
+    // skipped the type system on a REGISTERED route still fails closed.
+    if (request.is404) return;
     // Fails CLOSED: `mutating === false` is the ONLY bypass. `undefined`
     // (a row that skipped the type system, e.g. via a cast) is mutating,
     // same as `true` (row 28). `as const satisfies` makes this unreachable

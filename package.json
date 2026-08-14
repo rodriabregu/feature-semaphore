@@ -16,7 +16,8 @@
     "build": "tsc -b packages/core/tsconfig.build.json packages/server/tsconfig.build.json packages/sdk-node/tsconfig.build.json packages/bff/tsconfig.build.json && pnpm --filter @rodriab/feature-semaphore-dashboard run build",
     "vectors:generate": "node scripts/generate-vectors.mjs",
     "vectors:verify": "node scripts/generate-vectors.mjs --check",
-    "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs"
+    "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs",
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
