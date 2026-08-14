@@ -16,7 +16,62 @@ system built to be fully understood, with the evaluation core (`packages/core`)
 isolated as a pure, zero-dependency, IO-free function that the server and SDK both
 compile against — so server-side and client-side evaluation can never diverge.
 
-## Quick start
+## Architecture
+
+```
+                  httpOnly session cookie                Bearer fs_admin_<key>
+   browser  ────────────────────────────▶   bff   ────────────────────────────▶   server
+  (talks only to                       (Fastify: session,               (Fastify: admin API,
+   the bff; never                       login, proxy — AND               SDK API, /metrics)
+   sees fs_admin_)                       serves the dashboard                    │
+                                          bundle itself, no                      ▼
+                                          separate container)         postgres / sqlite / memory
+
+   sdk-node  ───compiles against───▶  core  ◀───compiles against───  server
+  (Node processes,                (pure evaluate(), zero
+   local evaluation,               runtime deps, zero IO)
+   never a network call
+   on isEnabled())
+```
+
+Two hops of trust, never one. The browser holds only an `httpOnly` session
+cookie and nothing else — a test runs a real `vite build` and greps the
+shipped bundle to prove no admin key ever reaches it. The BFF alone holds
+the full-write `fs_admin_` key and injects it server-side on every proxied
+call. `packages/bff` serves `packages/dashboard`'s built bundle directly
+(`registerDashboard`, `DASHBOARD_DIST_DIR`) — there is no separate dashboard
+container, no Vite dev-server proxy, and no external reverse proxy in front
+of either. `packages/sdk-node` and `packages/server` both compile against
+`packages/core`'s pure `evaluate()`, so server-side and SDK-side evaluation
+can never diverge.
+
+## Quick start (Docker)
+
+```bash
+docker compose up -d --wait
+```
+
+This builds and starts three containers — `db` (Postgres), `server`, and
+`bff` — waits for all three to report healthy, and seeds one demo flag
+(`checkout-v2`, `SEED_DEMO_FLAG=true`). The BFF, which also serves the built
+dashboard, is reachable at `http://localhost:8080`:
+
+```bash
+curl -c cookies.txt -X POST localhost:8080/login \
+  -H 'Content-Type: application/json' -d '{"password":"demo-password"}'
+
+curl -b cookies.txt localhost:8080/api/flags | jq   # the seeded checkout-v2 flag
+```
+
+`docker compose down -v` stops the stack and drops the seeded database
+volume. See `docker-compose.yml` for the exact environment each service
+gets, and `packages/bff/README.md` for what every BFF-only variable does.
+
+This is also what `.github/workflows/ci.yml`'s `compose-smoke` job runs on
+every push, plus a bounded `/readyz` poll and assertions that `/api/nope`
+stays a 404 and never the SPA shell.
+
+## Quick start (no Docker)
 
 ```bash
 pnpm install
@@ -37,6 +92,9 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/readyz    # 503 until mi
 ```
 
 There is no `pnpm start` script yet — run the built entrypoint directly.
+(There is a `pnpm deploy` script — see "Deploying" under
+`packages/bff/README.md#deploying`; it is unrelated to running the server
+locally.)
 
 ### Your first evaluation
 
@@ -88,8 +146,24 @@ for the preview endpoint's candidate overlay.
 | `SQLITE_FILE`                | —          | Required when the driver is `sqlite`                                                                                                     |
 | `PORT`                       | `3000`     |                                                                                                                                          |
 | `HOST`                       | `0.0.0.0`  |                                                                                                                                          |
+| `LOG_LEVEL`                  | `info`     | Passed to pino. Each package's own `vitest.config.ts` sets this to `silent` so the test suite stays quiet                                |
+| `SEED_DEMO_FLAG`             | —          | Exactly the string `'true'` seeds one demo flag (`checkout-v2`) at startup, idempotently — safe to leave set across restarts             |
 
 Migrations run at startup under a lock, so two instances can boot simultaneously without racing.
+
+### `/metrics`
+
+`GET /metrics` returns Prometheus text exposition — one counter
+(`feature_semaphore_flag_exposures_total`), one gauge
+(`feature_semaphore_ruleset_age_seconds`), one histogram
+(`feature_semaphore_sdk_definitions_duration_seconds`). It sits at the root,
+outside `/api/v1`, so it takes no admin key — but that is not what keeps it
+private. In the shipped Fly topology (`fly.server.toml`), `packages/server`
+is given **no public IP at all**; `/metrics` is reachable only from apps in
+the same Fly organization over the `.internal` network (in practice, only
+`packages/bff`, and `packages/bff` has no `/metrics` row in its own proxy
+route table, so a dashboard session cannot reach it either). Network scope
+is the boundary here, not auth.
 
 ## Using the management API
 
@@ -382,29 +456,55 @@ shipped bundle to prove it.
 browser --cookie httpOnly--> packages/bff --Bearer fs_admin_--> packages/server
 ```
 
-Same-origin by construction, which dissolves CORS rather than configuring it.
+Same-origin by construction, which dissolves CORS rather than configuring it — the BFF
+serves the dashboard's built bundle itself (see the Architecture diagram above and
+`packages/bff/README.md`'s "Static serving" section), so there is nothing else to make
+same-origin.
 
-| Variable             | Default    | Notes                                                                                                                        |
-| -------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `UPSTREAM_URL`       | _required_ | The management API's base URL. Never defaults — a silent localhost fallback is how a demo writes to production               |
-| `ADMIN_API_KEY`      | _required_ | Same key the management API expects. Never leaves this process                                                               |
-| `DASHBOARD_PASSWORD` | _required_ | What an operator types to log in. Separate from the admin key by design                                                      |
-| `READ_ONLY_MODE`     | `false`    | Exactly the string `true` enables it. Rejects every route declared mutating with `403` before the request reaches the server |
-| `COOKIE_SECURE`      | `true`     | Exactly the string `false` disables it, so a typo cannot silently ship an insecure cookie                                    |
+| Variable                 | Default    | Notes                                                                                                                        |
+| ------------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `UPSTREAM_URL`           | _required_ | The management API's base URL. Never defaults — a silent localhost fallback is how a demo writes to production               |
+| `ADMIN_API_KEY`          | _required_ | Same key the management API expects. Never leaves this process                                                               |
+| `DASHBOARD_PASSWORD`     | _required_ | What an operator types to log in. Separate from the admin key by design                                                      |
+| `DASHBOARD_DIST_DIR`     | _required_ | Absolute path to `packages/dashboard/dist`. No default — the BFF will not boot without it                                    |
+| `READ_ONLY_MODE`         | `false`    | Exactly the string `true` enables it. Rejects every route declared mutating with `403` before the request reaches the server |
+| `COOKIE_SECURE`          | `true`     | Exactly the string `false` disables it, so a typo cannot silently ship an insecure cookie                                    |
+| `ALLOW_WRITES_ON_PUBLIC` | `false`    | Named escape hatch for a self-hoster deploying to Fly on purpose who wants a writable public deployment anyway               |
+| `PUBLIC_DEMO`            | `false`    | Exactly `true` marks this a public deployment, ORed with the platform-set `FLY_APP_NAME` — see `packages/bff/README.md`      |
+| `LOG_LEVEL`              | `info`     | Passed to pino, same as the server's copy above                                                                              |
 
 `READ_ONLY_MODE` classifies routes by an explicit per-route declaration, **never by HTTP
 method** — `POST /evaluate/preview` writes nothing and stays reachable. A route that forgets
 to declare itself fails closed as mutating, and omitting the field is a compile error.
+`READ_ONLY_MODE` itself defaults to permissive (writable), not safe — deliberately, since a
+self-hosted operator needs a writable dashboard. The BFF instead refuses to **boot** at all
+for a deployment that looks public (`FLY_APP_NAME` or `PUBLIC_DEMO=true`) unless
+`READ_ONLY_MODE=true` or the named `ALLOW_WRITES_ON_PUBLIC` escape hatch is set — see
+"The public-deployment boot gate" in `packages/bff/README.md`.
 
 Failed logins escalate a delay (250ms, 500ms, 1s, capped at 2s) that resets on success. There
 is deliberately no lockout: with exactly one legitimate credential, a mechanism that _denies_
 hands an attacker a way to lock out the only operator. A 2s cap still bounds guessing to
 roughly 1,800 attempts an hour, which is nothing against a high-entropy secret.
 
-Two things to know before deploying it, both documented in `packages/bff/README.md`:
-the session store is an in-memory `Map`, so the BFF is **single-instance** — two replicas log
-operators out at random. And there is no dev-proxy or static-serving path yet, so the
-dashboard needs an external reverse proxy to sit same-origin with the BFF.
+One thing to know before deploying it, documented in full in `packages/bff/README.md`: the
+session store is an in-memory `Map`, so the BFF is **single-instance** — two replicas log
+operators out at random. `fly.toml` and `pnpm deploy`'s machine-count gate enforce this at
+deploy time; see "Trade-offs and constraints" below and `packages/bff/README.md#deploying`.
+
+## Trade-offs and constraints
+
+Rationale for these lives inline near the code it explains; this table exists so a reader
+does not have to go find it.
+
+| Decision | Why |
+| --- | --- |
+| The Docker image ships dev dependencies | The design's pruned `prod-deps` stage was dropped for a whole-`/app` copy from the build stage. pnpm's workspace `node_modules` is a graph of relative symlinks spanning one root `.pnpm` store; copying it selectively is fragile, copying it wholesale is reliable. Traded image size and attack surface for build reliability — see the `Dockerfile`'s `server`/`bff` stage comments |
+| `wildcard: false` costs a BFF restart per asset rebuild in dev | `@fastify/static`'s `wildcard: false` globs the dist directory once, at registration — the mechanism that keeps `/api` from ever being swallowed by the SPA fallback. Vite emits hash-named files on every rebuild, so the startup glob never sees them. Mitigated with `node --watch-path`, not a second dev-proxy assembly — see `packages/bff/README.md`'s "Static serving" section |
+| The BFF is single-instance by construction | The admin key has no revocation path, which is why sessions must be revocable server-side (`POST /logout`), which is why they live in an in-memory `Map` rather than a stateless signed cookie. Not an oversight — see `packages/bff/README.md`'s "Why not a stateless cookie?" section, and `fly.toml` / `pnpm deploy`'s machine-count gate for how it is enforced at deploy time |
+| SDK cache hit rate is not exposed as a metric | No package in this repo instantiates `packages/sdk-node` as a live consumer, so there is no data source for that metric in the deployed topology. Building a synthetic consumer to satisfy a metric nobody reads would be theatre, not observability |
+| Exposure retention is not implemented | `/metrics`'s exposure counter is an hourly upsert-aggregate keyed by `(flag, env, hour, value, reason)` — growth is linear in cardinality × time and independent of traffic, with a ceiling near 4,800 rows/day for a five-flag demo. That arithmetic is the actual artifact here; a pruning cron job would be premature for numbers this small, and would also turn the counter's monotonicity into a lie the moment old rows are pruned |
+| `READ_ONLY_MODE` defaults permissive, not safe | A self-hosted operator needs a writable dashboard — that is the product. Flipping the default to safe would break every self-hoster to protect against a narrower case (public exposure), which the boot gate covers instead without changing the default everyone else relies on |
 
 ## Scripts
 
@@ -416,6 +516,7 @@ dashboard needs an external reverse proxy to sit same-origin with the BFF.
 | `pnpm format:check`       | Prettier check                                                                                  |
 | `pnpm typecheck`          | `tsc -b` across the solution (src and tests)                                                    |
 | `pnpm build`              | Compile `core`, `server`, `sdk-node` and `bff` with `tsc -b`, then bundle `dashboard` with Vite |
+| `pnpm deploy`             | Runs `scripts/deploy.sh` — asserts each Fly app has exactly one machine, then `fly deploy`s both. See `packages/bff/README.md#deploying` |
 | `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture            |
 | `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                                  |
 
@@ -423,8 +524,8 @@ dashboard needs an external reverse proxy to sit same-origin with the BFF.
 `DATABASE_URL` is set — 28 tests, reported as skipped rather than silently absent:
 
 ```bash
-pnpm test                                                     # 570 passed | 28 skipped
-DATABASE_URL=postgres://localhost:5432/postgres pnpm test     # 598 passed | 0 skipped
+pnpm test                                                     # 611 passed | 28 skipped
+DATABASE_URL=postgres://localhost:5432/postgres pnpm test     # 639 passed | 0 skipped
 ```
 
 Coverage thresholds are declared per package in the root `vitest.config.ts` and nowhere else —

@@ -11,15 +11,16 @@ this README's login and safety notes live.
 pnpm build   # builds this package's dist/ alongside the rest of the workspace
 ```
 
-There is no `pnpm dev` script yet, and this package neither proxies API
-requests in a dev server nor serves its own built assets — both are BFF
-concerns still open for Phase 5's deployment work. Every `apiFetch` call
-(`src/api/client.ts`) uses a same-origin relative path (`/api/...`,
-`/login`, `/logout`), so this UI only works when served from the same
-origin as `packages/bff` — either behind one reverse proxy, or once the BFF
-gains its own static-file serving. Building and manually copying `dist/`
-behind such a proxy is the only supported path today; that gap is recorded
-here rather than silently assumed away.
+There is no `pnpm dev` script yet — this package has no live-reload dev
+server of its own. Every `apiFetch` call (`src/api/client.ts`) uses a
+same-origin relative path (`/api/...`, `/login`, `/logout`), so this UI only
+works when served from the same origin as `packages/bff`. `packages/bff`
+now serves this package's built bundle directly (`registerDashboard`,
+`packages/bff/src/http/static/register-dashboard.ts`) — set
+`DASHBOARD_DIST_DIR` to this package's `dist/` and the BFF is the same-origin
+host; no separate reverse proxy is required. See
+`packages/bff/README.md` for `DASHBOARD_DIST_DIR` and the local dev loop
+(`vite build --watch` plus a BFF restart per asset rebuild).
 
 ## Screens
 
