@@ -56,3 +56,106 @@ jobs:
       # purpose. Merging them destroys the two-authority independence guarantee
       # that is the entire point of the golden vectors.
       - run: pnpm crosscheck:vectors
+
+  # Proves the real container assembly, not just the in-process test suite:
+  # the Dockerfile's two build targets, docker-compose.yml's wiring, and the
+  # demo seed all have to work together for this job to pass. It has been
+  # shown failing once (a deliberate regression removing the BFF's scoped
+  # `/api` 404 handler flipped `/api/nope` to 200 HTML, and this job caught
+  # it) before being trusted — see the apply-progress record for this slice.
+  compose-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker compose build
+
+      # `--wait` blocks on each service's own healthcheck, which itself
+      # polls `/readyz` — but that is a courtesy, not the assertion. The
+      # explicit poll below, with its own bounded timeout, is what decides
+      # this job (design §10: the smoke subprocess must not pass just
+      # because a healthcheck was cached or raced).
+      - run: docker compose up -d --wait --wait-timeout 120
+
+      - name: Poll /readyz with a bounded timeout, then assert the assembly
+        run: |
+          set -euo pipefail
+
+          BASE=http://localhost:8080
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -sf "$BASE/readyz" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "FAIL: bff never became ready within the bounded poll" >&2
+            exit 1
+          fi
+
+          # curl -f, never -L: a redirect swallowed into a 200 would mask a
+          # real failure here (design §10).
+          body=$(curl -sf "$BASE/")
+          if ! grep -q 'id="root"' <<<"$body"; then
+            echo "FAIL: SPA shell marker not found in /" >&2
+            exit 1
+          fi
+
+          anon_status=$(curl -s -o /tmp/anon_flags.json -w '%{http_code}' "$BASE/api/flags")
+          if [ "$anon_status" != "401" ]; then
+            echo "FAIL: anonymous /api/flags expected 401, got $anon_status" >&2
+            cat /tmp/anon_flags.json >&2
+            exit 1
+          fi
+          if ! grep -q 'unauthenticated' /tmp/anon_flags.json; then
+            echo "FAIL: 401 body missing expected content — nothing was produced" >&2
+            exit 1
+          fi
+
+          login_status=$(curl -s -c /tmp/cookies.txt -o /dev/null -w '%{http_code}' -X POST "$BASE/login" \
+            -H 'Content-Type: application/json' \
+            -d '{"password":"demo-password"}')
+          if [ "$login_status" != "200" ]; then
+            echo "FAIL: login expected 200, got $login_status" >&2
+            exit 1
+          fi
+
+          # The scoped `/api` 404 handler (design D1) must survive assembly:
+          # an unregistered path must be 404 + problem+json, never the SPA
+          # shell — status alone is not enough (§10), so also assert the
+          # body is not HTML AND that real problem+json content was produced.
+          nope_status=$(curl -s -b /tmp/cookies.txt -o /tmp/nope.json -w '%{http_code}' "$BASE/api/nope")
+          if [ "$nope_status" != "404" ]; then
+            echo "FAIL: authenticated /api/nope expected 404, got $nope_status" >&2
+            cat /tmp/nope.json >&2
+            exit 1
+          fi
+          if grep -qi '<html' /tmp/nope.json; then
+            echo "FAIL: /api/nope returned the SPA shell instead of a 404 — the not-found handler was swallowed" >&2
+            exit 1
+          fi
+          if ! grep -q '"status":404' /tmp/nope.json; then
+            echo "FAIL: /api/nope body missing expected problem+json content — nothing was produced" >&2
+            exit 1
+          fi
+
+          flags_body=$(curl -sf -b /tmp/cookies.txt "$BASE/api/flags")
+          if ! grep -q 'checkout-v2' <<<"$flags_body"; then
+            echo "FAIL: seeded demo flag not visible via /api/flags" >&2
+            echo "$flags_body" >&2
+            exit 1
+          fi
+
+          echo "compose smoke: all assertions passed"
+
+      - name: Restart the server to prove the idempotent seed
+        if: always()
+        run: docker compose restart server
+
+      - if: always()
+        run: docker compose logs
+      - if: always()
+        run: docker compose down -v

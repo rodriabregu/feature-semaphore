@@ -36,6 +36,7 @@ import {
 } from '../infrastructure/persistence/migrations/index.js';
 import { migrate } from '../infrastructure/persistence/migrations/runner.js';
 import { seedAdminKey } from '../infrastructure/persistence/seed/admin-key.js';
+import { seedDemoFlag } from '../infrastructure/persistence/seed/demo-flag.js';
 import { seedServerKeys } from '../infrastructure/persistence/seed/server-key.js';
 
 export type DatabaseDriver = 'memory' | 'sqlite' | 'postgres';
@@ -90,9 +91,10 @@ function buildMemoryAdapters(clock: Clock): Adapters {
   const db = new MemoryDatabase();
   const store = { get: () => db.current };
   const keys = createMemoryApiKeyRepository(store);
+  const repo = createMemoryFlagRepository(store, clock);
 
   return {
-    repo: createMemoryFlagRepository(store, clock),
+    repo,
     keys,
     audit: createMemoryAuditLog(store),
     uow: createMemoryUnitOfWork(db, clock),
@@ -101,6 +103,7 @@ function buildMemoryAdapters(clock: Clock): Adapters {
     migrateAndSeed: async (adminApiKey, serverApiKeys) => {
       await seedAdminKey(keys, adminApiKey, clock);
       await seedServerKeys(keys, serverApiKeys, clock);
+      await seedDemoFlag(repo, clock);
     },
   };
 }
@@ -121,9 +124,10 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
 
   const db = openSqliteDatabase(sqliteFile);
   const keys = createSqliteApiKeyRepository(db);
+  const repo = createSqliteFlagRepository(db, clock);
 
   return {
-    repo: createSqliteFlagRepository(db, clock),
+    repo,
     keys,
     audit: createSqliteAuditLog(db),
     uow: createSqliteUnitOfWork(db, clock),
@@ -132,6 +136,7 @@ async function buildSqliteAdapters(sqliteFile: string, clock: Clock): Promise<Ad
       await migrate(createSqliteMigrationConnection(db), SQLITE_MIGRATIONS, () => clock.now());
       await seedAdminKey(keys, adminApiKey, clock);
       await seedServerKeys(keys, serverApiKeys, clock);
+      await seedDemoFlag(repo, clock);
     },
   };
 }
@@ -154,9 +159,10 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
 
   const pool = new Pool({ connectionString: databaseUrl });
   const keys = createPostgresApiKeyRepository(pool);
+  const repo = createPostgresFlagRepository(pool, clock);
 
   return {
-    repo: createPostgresFlagRepository(pool, clock),
+    repo,
     keys,
     audit: createPostgresAuditLog(pool),
     uow: createPostgresUnitOfWork(pool, clock),
@@ -170,6 +176,7 @@ async function buildPostgresAdapters(databaseUrl: string, clock: Clock): Promise
         );
         await seedAdminKey(keys, adminApiKey, clock);
         await seedServerKeys(keys, serverApiKeys, clock);
+        await seedDemoFlag(repo, clock);
       } finally {
         await lockClient.end();
       }

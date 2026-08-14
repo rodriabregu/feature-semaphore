@@ -1,0 +1,76 @@
+# One-command local stack: db + server + bff, with one demo flag seeded
+# (spec `deployment-packaging`). No separate dashboard container — the BFF
+# serving the built bundle IS the dashboard (`#1962`). Sets no `FLY_APP_NAME`
+# and no `PUBLIC_DEMO`, so `isPublicDeployment` is false and the stack boots
+# writable, which is correct for local development. `READ_ONLY_MODE` is
+# intentionally NOT set here — that belongs to the Fly deploy config.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: semaphore
+      POSTGRES_PASSWORD: semaphore
+      POSTGRES_DB: semaphore
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U semaphore -d semaphore']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  server:
+    build:
+      context: .
+      target: server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_DRIVER: postgres
+      DATABASE_URL: postgres://semaphore:semaphore@db:5432/semaphore
+      ADMIN_API_KEY: fs_admin_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      SEED_DEMO_FLAG: 'true'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3000/readyz', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  bff:
+    build:
+      context: .
+      target: bff
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      UPSTREAM_URL: http://server:3000
+      ADMIN_API_KEY: fs_admin_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      DASHBOARD_PASSWORD: demo-password
+      DASHBOARD_DIST_DIR: /app/dashboard-dist
+      # Plain HTTP locally (no TLS terminator in front of this stack) — a
+      # `Secure` session cookie would never be sent back by a browser or curl
+      # over http, breaking login. Fly's deployment terminates TLS in front
+      # of the BFF, so this stays at its safe (secure) default there.
+      COOKIE_SECURE: 'false'
+    ports:
+      - '8080:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3000/readyz', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
