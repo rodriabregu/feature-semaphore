@@ -24,9 +24,7 @@ const ENVIRONMENTS: readonly Environment[] = ['development', 'production'];
  */
 const EPOCH = new Date(0);
 
-async function buildExposureTotalsFamily(
-  exposures: ExposureRepository,
-): Promise<MetricFamily> {
+async function buildExposureTotalsFamily(exposures: ExposureRepository): Promise<MetricFamily> {
   const samples: MetricSample[] = [];
   for (const environment of ENVIRONMENTS) {
     const totals = await exposures.listFlagTotals({ environment, since: EPOCH });

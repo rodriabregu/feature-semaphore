@@ -71,9 +71,9 @@ describe('DASHBOARD_DIST_DIR — required, no default (design D9)', () => {
 
 describe('Public deployment boot assertion (design D5, #1975)', () => {
   it('refuses to boot: FLY_APP_NAME set, READ_ONLY_MODE unset, no escape hatch', () => {
-    expect(() => readCompositionConfig({ ...BASE_ENV, FLY_APP_NAME: 'feature-semaphore-demo' })).toThrow(
-      PublicDeploymentRequiresReadOnlyError,
-    );
+    expect(() =>
+      readCompositionConfig({ ...BASE_ENV, FLY_APP_NAME: 'feature-semaphore-demo' }),
+    ).toThrow(PublicDeploymentRequiresReadOnlyError);
   });
 
   it('refuses to boot: PUBLIC_DEMO=true, READ_ONLY_MODE unset, no escape hatch', () => {

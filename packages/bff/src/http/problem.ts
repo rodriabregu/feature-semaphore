@@ -5,11 +5,7 @@ const BFF_BASE = 'https://feature-semaphore.dev/problems/bff';
 // lets a client tell "the BFF refused" from "the server refused".
 
 export type BffProblemCode =
-  | 'unauthenticated'
-  | 'read_only'
-  | 'invalid_credentials'
-  | 'upstream_unavailable'
-  | 'not_found';
+  'unauthenticated' | 'read_only' | 'invalid_credentials' | 'upstream_unavailable' | 'not_found';
 
 export interface BffProblemSpec {
   readonly status: number;

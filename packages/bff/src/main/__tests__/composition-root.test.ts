@@ -190,7 +190,9 @@ describe('composition root — dashboard static serving (S3)', () => {
     const response = await app.inject({ method: 'GET', url: '/assets/app-abc123.js' });
 
     expect(response.statusCode).toBe(200);
-    expect(response.payload).toContain("console.log('feature-semaphore dashboard test fixture asset')");
+    expect(response.payload).toContain(
+      "console.log('feature-semaphore dashboard test fixture asset')",
+    );
   });
 
   /**
