@@ -9,6 +9,7 @@ import { createMemorySessionStore } from '../session/session-store.js';
 import { sessionGuardPlugin } from '../http/plugins/session-guard.js';
 import { registerProxyRoutes } from '../http/proxy/register-proxy.js';
 import { PROXY_ROUTES } from '../http/proxy/route-table.js';
+import { registerDashboard } from '../http/static/register-dashboard.js';
 import { createBffLogger, type BffLoggerOverrides } from './logger.js';
 
 export type { CompositionConfig } from './env.js';
@@ -70,6 +71,29 @@ export async function buildApp(
     },
     { prefix: '/api' },
   );
+
+  // Mounted AFTER the `/api` scope (design D3). The honest reason: three
+  // things together keep `/api/*` from being swallowed by the SPA fallback,
+  // and only one of them is this ordering.
+  //   1. `wildcard: false` inside `registerDashboard` — `@fastify/static`
+  //      registers no catch-all route, so no static route can ever match an
+  //      `/api` path. THIS is the mechanism that actually carries the
+  //      guarantee (verified against the plugin's own docs, `#1984`).
+  //   2. The scoped `setNotFoundHandler` registered inside
+  //      `registerProxyRoutes` (design D1) — Fastify resolves not-found by
+  //      longest registered prefix, so `/api/nope` reaches that handler, not
+  //      the root one below.
+  //   3. This ordering — registering the root fallback while the `/api`
+  //      scope is still pending keeps the two not-found handlers in
+  //      distinct contexts. It is real, but it is the WEAKEST of the three:
+  //      moving this call above the `/api` register would not by itself
+  //      break routing, which is exactly why a future "cleanup" that
+  //      reorders these calls while believing it preserves the guarantee is
+  //      the trap — the thing actually worth preserving is #1.
+  // Proof lives in two places: `main/__tests__/composition-root.test.ts`
+  // (T3.1–T3.5, in-process) and the compose smoke job in
+  // `.github/workflows/ci.yml` (through the real container).
+  registerDashboard(app, { distDir: config.dashboardDistDir });
 
   let isReady = false;
   app.get('/healthz', (_request, reply: FastifyReply) => {

@@ -30,6 +30,7 @@ async function buildTestApp(options: { cookieSecure?: boolean } = {}) {
       dashboardPassword: DASHBOARD_PASSWORD,
       cookieSecure: options.cookieSecure ?? true,
       readOnly: false,
+      dashboardDistDir: '/tmp/does-not-need-to-exist-for-session-routes',
     },
     sessions,
     clock,

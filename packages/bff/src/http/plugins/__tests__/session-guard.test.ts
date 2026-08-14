@@ -73,6 +73,7 @@ describe('sessionGuardPlugin', () => {
         dashboardPassword: DASHBOARD_PASSWORD,
         cookieSecure: true,
         readOnly: false,
+        dashboardDistDir: '/tmp/does-not-need-to-exist-for-session-routes',
       },
       sessions,
       clock,

@@ -28,9 +28,10 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
     UPSTREAM_URL: 'http://localhost:3000',
     ADMIN_API_KEY: `fs_admin_${'a'.repeat(43)}`,
     DASHBOARD_PASSWORD: 'correct-horse-battery-staple',
+    DASHBOARD_DIST_DIR: '/tmp/does-not-need-to-exist-for-env-parsing',
   };
 
-  it('returns the config unchanged when all three variables are set', () => {
+  it('returns the config unchanged when all four variables are set', () => {
     const config = readCompositionConfig(VALID_ENV);
 
     expect(config).toEqual({
@@ -39,6 +40,7 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
       dashboardPassword: 'correct-horse-battery-staple',
       cookieSecure: true,
       readOnly: false,
+      dashboardDistDir: VALID_ENV.DASHBOARD_DIST_DIR,
     });
   });
 
@@ -46,6 +48,7 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
     const env = {
       ADMIN_API_KEY: VALID_ENV.ADMIN_API_KEY,
       DASHBOARD_PASSWORD: VALID_ENV.DASHBOARD_PASSWORD,
+      DASHBOARD_DIST_DIR: VALID_ENV.DASHBOARD_DIST_DIR,
     };
     expect(() => readCompositionConfig(env)).toThrow(/UPSTREAM_URL/);
   });
@@ -54,12 +57,17 @@ describe('readCompositionConfig — fail-fast, no localhost default', () => {
     const env = {
       UPSTREAM_URL: VALID_ENV.UPSTREAM_URL,
       DASHBOARD_PASSWORD: VALID_ENV.DASHBOARD_PASSWORD,
+      DASHBOARD_DIST_DIR: VALID_ENV.DASHBOARD_DIST_DIR,
     };
     expect(() => readCompositionConfig(env)).toThrow(/ADMIN_API_KEY/);
   });
 
   it('throws when DASHBOARD_PASSWORD is absent', () => {
-    const env = { UPSTREAM_URL: VALID_ENV.UPSTREAM_URL, ADMIN_API_KEY: VALID_ENV.ADMIN_API_KEY };
+    const env = {
+      UPSTREAM_URL: VALID_ENV.UPSTREAM_URL,
+      ADMIN_API_KEY: VALID_ENV.ADMIN_API_KEY,
+      DASHBOARD_DIST_DIR: VALID_ENV.DASHBOARD_DIST_DIR,
+    };
     expect(() => readCompositionConfig(env)).toThrow(/DASHBOARD_PASSWORD/);
   });
 });
