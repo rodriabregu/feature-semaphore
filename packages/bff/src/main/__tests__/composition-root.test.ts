@@ -84,6 +84,21 @@ describe('composition root — proxy scope (B6)', () => {
     );
   });
 
+  it('GET /api/metrics -> 404: no /metrics row exists in PROXY_ROUTES, so it is unreachable through the BFF (S2)', async () => {
+    const fetchFn = vi.fn<typeof fetch>();
+    const { app } = await buildApp(VALID_CONFIG, fetchFn);
+    const cookie = await login(app);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/metrics',
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it('refuses a declared-mutating proxied route under READ_ONLY_MODE before any upstream call', async () => {
     const fetchFn = vi.fn<typeof fetch>();
     const { app } = await buildApp({ ...VALID_CONFIG, readOnly: true }, fetchFn);

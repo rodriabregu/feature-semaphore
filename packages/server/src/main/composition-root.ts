@@ -15,10 +15,12 @@ import {
 } from '../infrastructure/logging/logger.js';
 import { authPlugin } from '../infrastructure/http/plugins/auth.js';
 import { sdkAuthPlugin } from '../infrastructure/http/plugins/sdk-auth.js';
+import { createHistogram } from '../infrastructure/http/metrics/histogram.js';
 import { registerConfigRoutes } from '../infrastructure/http/routes/config.routes.js';
 import { registerEvaluateRoutes } from '../infrastructure/http/routes/evaluate.routes.js';
 import { registerExposuresRoutes } from '../infrastructure/http/routes/exposures.routes.js';
 import { registerFlagsRoutes } from '../infrastructure/http/routes/flags.routes.js';
+import { registerMetricsRoutes } from '../infrastructure/http/routes/metrics.routes.js';
 import { registerOverridesRoutes } from '../infrastructure/http/routes/overrides.routes.js';
 import { registerRulesRoutes } from '../infrastructure/http/routes/rules.routes.js';
 import { registerSdkRoutes } from '../infrastructure/http/routes/sdk.routes.js';
@@ -226,6 +228,24 @@ export async function buildApp(
 
   const adapters = await buildAdapters(config, clock);
 
+  const definitionsLatencyHistogram = createHistogram([
+    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+  ]);
+
+  // Root scope — a SIBLING of `/healthz`/`/readyz`, registered before the
+  // `/api/v1` scope below and therefore outside its `authPlugin` (design D6):
+  // `/metrics` is unauthenticated by placement, exactly like `/healthz`. Two
+  // absences carry the reachability guarantee, neither of them an auth
+  // check: the server has no public IP (Fly private network only), and
+  // `packages/bff/src/http/proxy/route-table.ts` has no `/metrics` row, so no
+  // dashboard session can reach it either.
+  registerMetricsRoutes(app, {
+    repo: adapters.repo,
+    exposures: adapters.exposures,
+    clock,
+    histogram: definitionsLatencyHistogram,
+  });
+
   await app.register(
     (instance, _opts, done) => {
       authPlugin(instance, { keys: adapters.keys, clock });
@@ -251,7 +271,12 @@ export async function buildApp(
   await app.register(
     (instance, _opts, done) => {
       sdkAuthPlugin(instance, { keys: adapters.keys, clock });
-      registerSdkRoutes(instance, { repo: adapters.repo, exposures: adapters.exposures, clock });
+      registerSdkRoutes(instance, {
+        repo: adapters.repo,
+        exposures: adapters.exposures,
+        clock,
+        histogram: definitionsLatencyHistogram,
+      });
       done();
     },
     { prefix: '/api/v1/sdk' },
