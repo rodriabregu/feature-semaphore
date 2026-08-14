@@ -1,0 +1,47 @@
+# Fly.io app config for the BFF — the public entry point for the demo.
+app = "feature-semaphore-bff"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "bff"
+
+[env]
+  # Points at the server app's Fly private-network address (`.internal`),
+  # never a public one — see fly.server.toml's header comment for why that
+  # address is reachable at all only from apps in this same organization.
+  UPSTREAM_URL = "http://feature-semaphore-server.internal:3000"
+  DASHBOARD_DIST_DIR = "/app/dashboard-dist"
+
+  # This is the ENTIRE safety boundary for the public demo: the server has
+  # no read-only key kind, so this app holds a full-write `fs_admin_` key
+  # and only its own gate stops mutations. A boot assertion (`env.ts`)
+  # already refuses to start a public deployment without this, so a missing
+  # value fails loudly rather than silently allowing writes — it is set
+  # explicitly here anyway so the config states the intent rather than
+  # relying on the assertion to catch an omission.
+  READ_ONLY_MODE = "true"
+
+  # The session cookie's secure flag is intentionally left unset here. It
+  # defaults to secure/true, which is correct because Fly terminates TLS in
+  # front of this app. It is relaxed only in docker-compose.yml, where the
+  # local stack is plain HTTP with no TLS terminator.
+
+  # ADMIN_API_KEY and DASHBOARD_PASSWORD are NEVER set in this file — this
+  # repo is public. Set them once as Fly secrets before the first deploy:
+  #   fly secrets set ADMIN_API_KEY="<real fs_admin_... key>" --app feature-semaphore-bff
+  #   fly secrets set DASHBOARD_PASSWORD="<real dashboard password>" --app feature-semaphore-bff
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+
+  # Single-instance discipline (design decision #1976/#1980): packages/bff
+  # keeps sessions in an in-memory Map. Raising either value below logs
+  # operators out at random, with nothing in any log explaining why — the
+  # failure produces no error message at all. Do not raise these for "more
+  # capacity"; the mechanical backstop is scripts/deploy.sh's machine-count
+  # gate, but this config is the first line of defense.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1

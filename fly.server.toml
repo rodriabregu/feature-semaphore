@@ -1,0 +1,28 @@
+# Fly.io app config for the server — the private API.
+#
+# This app is given NO public IP: `fly ips allocate-v4` / `allocate-v6` are
+# never run for it, and no [http_service]/[[services]] block below opens an
+# internet-facing listener. It is reachable only over Fly's private
+# `.internal` network, from other apps in the same Fly organization (in
+# practice, only the bff app, via its UPSTREAM_URL). That absence — not an
+# auth check — is what makes /metrics and the management API unreachable
+# from the public internet without any auth code.
+app = "feature-semaphore-server"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "server"
+
+[env]
+  DATABASE_DRIVER = "postgres"
+  SEED_DEMO_FLAG = "true"
+
+  # The session cookie's secure flag is a BFF-only setting; this app does
+  # not read it at all, so nothing analogous belongs here either.
+
+  # DATABASE_URL and ADMIN_API_KEY are NEVER set in this file — this repo is
+  # public. Set them once as Fly secrets before the first deploy (the same
+  # ADMIN_API_KEY value must also be set on the bff app):
+  #   fly secrets set DATABASE_URL="<real postgres connection string>" --app feature-semaphore-server
+  #   fly secrets set ADMIN_API_KEY="<same fs_admin_... key as the bff app>" --app feature-semaphore-server
