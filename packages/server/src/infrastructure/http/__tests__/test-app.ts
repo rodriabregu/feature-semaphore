@@ -53,9 +53,11 @@ export interface BuildTestAppOptions {
 
   /**
    * A writable sink for the app's logger — e.g. to assert a persistence
-   * failure was logged, not silently swallowed. Defaults to a fully
-   * disabled logger (matches the composition root's own `logger: false`).
-   * Typed to pino's minimal destination shape, not the full `NodeJS.WritableStream`.
+   * failure was logged, not silently swallowed. Defaults to a disabled
+   * logger DELIBERATELY: the composition root now logs for real (S1), so a
+   * test that does not assert on log output should stay quiet rather than
+   * mirror production's logger. Typed to pino's minimal destination shape,
+   * not the full `NodeJS.WritableStream`.
    */
   readonly logStream?: { write(chunk: string): boolean };
 }

@@ -21,6 +21,11 @@ import type { LoggerOptions } from 'pino';
  * Mirrored in `packages/bff/src/main/logger.ts` — keep the redact list and
  * serializer shape identical in both files; a change to one is a change to
  * both (design Part 2 §8: duplication here is deliberate, not an oversight).
+ *
+ * Level is read from `LOG_LEVEL` (guide §11) rather than hardcoded, so an
+ * operator can turn logging up or down without a redeploy. Both packages'
+ * `vitest.config.ts` set `LOG_LEVEL=silent` — this is a real operational
+ * knob, not test scaffolding, and the test suite is simply its first user.
  */
 const REDACT_PATHS = [
   'req.headers.authorization',
@@ -31,13 +36,18 @@ const REDACT_PATHS = [
 export interface ServerLoggerOverrides {
   /** Test seam only — production never overrides pino's default stdout stream. */
   readonly stream?: { write(msg: string): boolean };
+  /**
+   * Test seam only — overrides the ambient `LOG_LEVEL` (e.g. the `silent`
+   * the test project sets) for a test that asserts on real log output.
+   */
+  readonly level?: string;
 }
 
 export function createServerLogger(
   overrides: ServerLoggerOverrides = {},
 ): LoggerOptions & ServerLoggerOverrides {
   return {
-    level: 'info',
+    level: process.env.LOG_LEVEL ?? 'info',
     redact: [...REDACT_PATHS],
     serializers: {
       req: (request: FastifyRequest) => ({

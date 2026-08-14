@@ -13,6 +13,9 @@ import type { LoggerOptions } from 'pino';
  *
  * Same Fastify v5 constraint as the server copy: `logger:` takes pino
  * OPTIONS, never a pre-built instance (`loggerInstance:` is for that).
+ *
+ * Level is read from `LOG_LEVEL` (guide §11), same as the server copy —
+ * `vitest.config.ts` sets it to `silent` for the test suite.
  */
 const REDACT_PATHS = [
   'req.headers.authorization',
@@ -23,13 +26,18 @@ const REDACT_PATHS = [
 export interface BffLoggerOverrides {
   /** Test seam only — production never overrides pino's default stdout stream. */
   readonly stream?: { write(msg: string): boolean };
+  /**
+   * Test seam only — overrides the ambient `LOG_LEVEL` (e.g. the `silent`
+   * the test project sets) for a test that asserts on real log output.
+   */
+  readonly level?: string;
 }
 
 export function createBffLogger(
   overrides: BffLoggerOverrides = {},
 ): LoggerOptions & BffLoggerOverrides {
   return {
-    level: 'info',
+    level: process.env.LOG_LEVEL ?? 'info',
     redact: [...REDACT_PATHS],
     serializers: {
       req: (request: FastifyRequest) => ({

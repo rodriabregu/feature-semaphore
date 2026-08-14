@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../../../main/composition-root.js';
+import { createServerLogger } from '../logger.js';
 
 /**
  * Drives the PRODUCTION `buildApp` (design Part 2 §4, hard requirement #2)
  * with a real `createServerLogger` config and a captured in-memory stream —
  * not a hand-rolled logger assembled just for this test.
+ *
+ * `level: 'info'` is passed explicitly wherever this is used below: the
+ * project's `vitest.config.ts` sets `LOG_LEVEL=silent` so the suite stays
+ * quiet by default, but these particular tests assert on real log content,
+ * so they opt back in.
  */
 function captureLogs(): { logs: string[]; stream: { write(chunk: string): boolean } } {
   const logs: string[] = [];
@@ -27,7 +33,7 @@ describe('structured logging — redaction (S1)', () => {
     const { app, start } = await buildApp(
       { databaseDriver: 'memory', adminApiKey: ADMIN_KEY },
       undefined,
-      { stream },
+      { stream, level: 'info' },
     );
     await start();
 
@@ -64,7 +70,7 @@ describe('composition root — request id adoption (S1, design D4)', () => {
     const { app, start } = await buildApp(
       { databaseDriver: 'memory', adminApiKey: ADMIN_KEY },
       undefined,
-      { stream },
+      { stream, level: 'info' },
     );
     await start();
 
@@ -78,12 +84,31 @@ describe('composition root — request id adoption (S1, design D4)', () => {
     const { app, start } = await buildApp(
       { databaseDriver: 'memory', adminApiKey: ADMIN_KEY },
       undefined,
-      { stream },
+      { stream, level: 'info' },
     );
     await start();
 
     await app.inject({ method: 'GET', url: '/healthz' });
 
     expect(logs.join('')).toMatch(/"reqId":"[^"]+"/);
+  });
+});
+
+describe('createServerLogger — level configurable via LOG_LEVEL (correction, #1988 review)', () => {
+  const original = process.env.LOG_LEVEL;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = original;
+  });
+
+  it('defaults to info when LOG_LEVEL is unset', () => {
+    delete process.env.LOG_LEVEL;
+    expect(createServerLogger().level).toBe('info');
+  });
+
+  it('honours LOG_LEVEL when set — the vitest config sets it to silent', () => {
+    process.env.LOG_LEVEL = 'debug';
+    expect(createServerLogger().level).toBe('debug');
   });
 });
