@@ -15,3 +15,7 @@ coverage/
 # refresh` and is machine-local — it lists absolute paths from the developer's
 # home directory, so it is meaningless in anyone else's checkout.
 .atl/
+
+# Local CodeGraph index: a machine-local SQLite graph rebuilt from the checkout
+# by `codegraph init`. Every worktree needs its own; sharing one is wrong.
+.codegraph/
