@@ -230,9 +230,18 @@ scale` cannot silently reintroduce a second replica. The gate targets this
 app specifically, since it is the one with the in-memory session `Map`;
 `packages/server` (`fly.server.toml`) is stateless and has no equivalent
 invariant. A brand-new app has zero machines before its first deploy, so the
-very first `fly deploy` for each app must be run manually
-(`fly launch`/`fly apps create` + one manual `fly deploy`); every deploy
+very first `fly deploy` for each app must be run manually; every deploy
 after that goes through the gate.
+
+That one-time bootstrap is written out step by step, with a verification
+after each phase, in [`docs/first-deploy.md`](../../docs/first-deploy.md).
+Follow it rather than improvising: **do not run `fly launch`** — it rewrites
+`fly.toml` and allocates a public IP, and `fly.server.toml`'s entire security
+posture is that the server app has none. `fly apps create` does neither. Nor
+is the gate the only count that matters: Fly's first deploy provisions a
+spare machine for availability unless `--ha=false` is passed, which for this
+app is not extra capacity but the silent-logout failure above, and which
+leaves `pnpm deploy` permanently blocked at two machines.
 
 ## Next step
 

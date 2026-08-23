@@ -541,18 +541,18 @@ does not have to go find it.
 
 ## Scripts
 
-| Script                    | What it does                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm test`               | Run the test suite (`vitest run`)                                                                                                        |
-| `pnpm test:coverage`      | Run tests with the coverage gate                                                                                                         |
-| `pnpm lint`               | ESLint over the whole workspace                                                                                                          |
-| `pnpm format:check`       | Prettier check                                                                                                                           |
-| `pnpm typecheck`          | `tsc -b` across the solution (src and tests)                                                                                             |
-| `pnpm build`              | Compile `core`, `server`, `sdk-node` and `bff` with `tsc -b`, then bundle `dashboard` with Vite                                          |
-| `pnpm deploy`             | Runs `scripts/deploy.sh` — asserts each Fly app has exactly one machine, then `fly deploy`s both. See `packages/bff/README.md#deploying` |
-| `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture                                                     |
-| `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                                                                           |
-| `pnpm bench:evaluate`     | Throughput benchmark for `evaluate()` over the built `core` bytes (`--json` for machine output)                                          |
+| Script                    | What it does                                                                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`               | Run the test suite (`vitest run`)                                                                                                         |
+| `pnpm test:coverage`      | Run tests with the coverage gate                                                                                                          |
+| `pnpm lint`               | ESLint over the whole workspace                                                                                                           |
+| `pnpm format:check`       | Prettier check                                                                                                                            |
+| `pnpm typecheck`          | `tsc -b` across the solution (src and tests)                                                                                              |
+| `pnpm build`              | Compile `core`, `server`, `sdk-node` and `bff` with `tsc -b`, then bundle `dashboard` with Vite                                           |
+| `pnpm deploy`             | Runs `scripts/deploy.sh` — asserts the **bff** app has exactly one machine, then `fly deploy`s both. First deploy: `docs/first-deploy.md` |
+| `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture                                                      |
+| `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                                                                            |
+| `pnpm bench:evaluate`     | Throughput benchmark for `evaluate()` over the built `core` bytes (`--json` for machine output)                                           |
 
 `pnpm test` skips the Postgres legs of the persistence and ETag-parity contract suites unless
 `DATABASE_URL` is set — 28 tests, reported as skipped rather than silently absent:
