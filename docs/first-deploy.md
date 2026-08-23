@@ -9,10 +9,11 @@ explaining why, and no in-process check can see a sibling instance.
 This document is the one-time bootstrap that gets each app to its first machine. **Every
 deploy after this goes through `pnpm deploy` and nothing else.**
 
-> Status: written from `fly.toml`, `fly.server.toml`, `scripts/deploy.sh`,
-> `packages/bff/src/main/env.ts` and Fly's documentation. It has not been executed
-> end-to-end against a real Fly account — treat the verification step after each phase as
-> the thing that actually decides, not the command that precedes it.
+> Status: written from `fly.toml`, `fly.server.toml`, `scripts/deploy.sh` and
+> `packages/bff/src/main/env.ts`. Every command below was checked against the flag surface
+> of **flyctl 0.4.87**, but the sequence has **not** been executed end-to-end against a real
+> Fly account. Treat the verification step after each phase as the thing that actually
+> decides, not the command that precedes it.
 
 ## What you end up with
 
@@ -31,7 +32,9 @@ and the management API off the internet.
 
 **1. Do not run `fly launch`.** It rewrites `fly.toml` and allocates a public IP. Both
 config files in this repo are hand-written and load-bearing, and `fly.server.toml`'s whole
-security posture is _no public IP_. Use `fly apps create`, which does neither.
+security posture is _no public IP_. Use `fly apps create`, whose own help text states the
+property that makes it the right tool here: _"This command won't generate a fly.toml
+configuration file."_
 
 **2. The first deploy creates TWO machines by default.** Fly provisions a spare for
 availability unless you pass `--ha=false`. For the BFF that is not a capacity decision, it
@@ -49,7 +52,15 @@ malformed key by design.
 brew install flyctl
 fly auth login
 fly auth whoami          # confirm the right account before anything else
+fly orgs list            # note which org you want; both apps MUST share one
 ```
+
+Both apps have to live in the **same** Fly organization. `UPSTREAM_URL` points the BFF at
+`http://feature-semaphore-server.internal:3000`, and Fly's private `.internal` network only
+resolves between apps in one org — a server created in a different org is simply
+unreachable, with no error until the first proxied request fails. If you have more than one
+org, pass `--org <name>` to both `fly apps create` calls below rather than relying on the
+default.
 
 ## 1. Generate the shared admin key
 
