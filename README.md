@@ -524,8 +524,8 @@ does not have to go find it.
 `DATABASE_URL` is set — 28 tests, reported as skipped rather than silently absent:
 
 ```bash
-pnpm test                                                     # 611 passed | 28 skipped
-DATABASE_URL=postgres://localhost:5432/postgres pnpm test     # 639 passed | 0 skipped
+pnpm test                                                     # 615 passed | 28 skipped
+DATABASE_URL=postgres://localhost:5432/postgres pnpm test     # 643 passed | 0 skipped
 ```
 
 Coverage thresholds are declared per package in the root `vitest.config.ts` and nowhere else —
