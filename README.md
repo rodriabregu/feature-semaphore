@@ -371,6 +371,39 @@ const enabled = client.isEnabled(
 await client.close();
 ```
 
+### How fast is `evaluate()`?
+
+`pnpm bench:evaluate` measures the shipped `packages/core/dist` bytes — median of 7 rounds
+x 200 000 iterations, seeded unit ids, no `Math.random()`. On an Apple M4 / Node v22.18.0:
+
+| Path                                  | ns/op | ops/s   |
+| ------------------------------------- | ----- | ------- |
+| Flag not found (server never reached) | 7.7   | 130 M/s |
+| Kill switch off                       | 8.0   | 125 M/s |
+| Per-unit override hit                 | 22    | 45 M/s  |
+| 8 rules, the 7th matches (no hashing) | 88    | 11 M/s  |
+| No rules, 50 % rollout (hashes)       | 218   | 4.6 M/s |
+
+Two things are worth reading off that table.
+
+The first is the point of the whole design: **the unreachable-server path is the fastest
+one there is** (7.7 ns, no allocation, no IO). Degrading to your default costs less than
+serving a real flag, so an outage cannot become a latency incident.
+
+The second is where the time actually goes: **only the paths that call `bucket()` are
+expensive.** Note the ordering above — an eight-rule ordered scan that matches at 100 %
+(88 ns, no hashing) is 2.5x _cheaper_ than a bare 50 % rollout (218 ns). Rule count is
+almost free; hashing is not.
+
+And it is not the hash function. Measured standalone, `bucket()` costs ~173 ns, of which
+`murmur3_32_bytes` over precomputed bytes is ~24 ns and `TextEncoder.encode()` inside
+`murmur3_32` is ~116 ns — UTF-8 encoding the `${flagKey}:${salt}:${unitId}` string is the
+single most expensive thing an evaluation does. An ASCII fast path in the encoder is the
+obvious optimisation and is **not** implemented, deliberately: `bucket()`'s output is a
+golden-vector contract (`pnpm vectors:verify`, `pnpm crosscheck:vectors`), and 4.6 M
+bucketed evaluations per second per process is already orders of magnitude past what a
+flag check needs. A known ceiling, not a silent one.
+
 ### Eventual consistency
 
 The client polls `GET /api/v1/sdk/definitions` on a fixed interval (`pollIntervalMs`, default
@@ -519,6 +552,7 @@ does not have to go find it.
 | `pnpm deploy`             | Runs `scripts/deploy.sh` — asserts each Fly app has exactly one machine, then `fly deploy`s both. See `packages/bff/README.md#deploying` |
 | `pnpm vectors:verify`     | Regenerate golden bucketing vectors in memory and diff against the committed fixture                                                     |
 | `pnpm crosscheck:vectors` | Recompute every golden vector with an independent hash library                                                                           |
+| `pnpm bench:evaluate`     | Throughput benchmark for `evaluate()` over the built `core` bytes (`--json` for machine output)                                          |
 
 `pnpm test` skips the Postgres legs of the persistence and ETag-parity contract suites unless
 `DATABASE_URL` is set — 28 tests, reported as skipped rather than silently absent:

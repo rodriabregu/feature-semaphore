@@ -17,6 +17,7 @@
     "vectors:generate": "node scripts/generate-vectors.mjs",
     "vectors:verify": "node scripts/generate-vectors.mjs --check",
     "crosscheck:vectors": "node scripts/crosscheck-vectors.mjs",
+    "bench:evaluate": "node scripts/bench-evaluate.mjs",
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
