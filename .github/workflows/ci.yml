@@ -21,13 +21,20 @@ jobs:
           --health-interval 5s --health-timeout 5s
           --health-retries 10 --health-start-period 10s
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      # v6 is the first release that supports pnpm 11, which is what
+      # package.json's `packageManager` field pins. Must stay BEFORE
+      # setup-node: `cache: pnpm` below needs the pnpm binary to already exist.
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.8.0
 
-      - uses: actions/setup-node@v4
+      # `cache: pnpm` is load-bearing and must stay explicit. setup-node v5
+      # added automatic cache detection from `packageManager`, and v6 narrowed
+      # that automatic path to npm only — a pnpm project that relies on the
+      # implicit behaviour silently loses its cache. This input does not.
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -66,7 +73,7 @@ jobs:
   compose-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - run: docker compose build
 
